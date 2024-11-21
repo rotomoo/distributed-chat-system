@@ -1,0 +1,15 @@
+server:
+  port: 8094
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - api-base
+      - mysql
+      - client-api
+
+  output:
+    ansi:
+      enabled: always

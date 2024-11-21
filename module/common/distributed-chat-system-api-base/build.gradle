@@ -1,0 +1,7 @@
+dependencies {
+    implementation project(':module:common:distributed-chat-system-common')
+}
+
+bootJar.enabled = false
+
+jar.enabled = true

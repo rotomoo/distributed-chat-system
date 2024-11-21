@@ -1,2 +1,28 @@
 rootProject.name = 'distributed-chat-system'
 
+// [1] common modules
+include 'module:common:distributed-chat-system-api-base'
+findProject(':module:common:distributed-chat-system-api-base')?.name = 'distributed-chat-system-api-base'
+
+include 'module:common:distributed-chat-system-common'
+findProject(':module:common:distributed-chat-system-common')?.name = 'distributed-chat-system-common'
+
+include 'module:common:distributed-chat-system-web-socket-base'
+findProject(':module:common:distributed-chat-system-web-socket-base')?.name = 'distributed-chat-system-web-socket-base'
+
+// [2] database modules
+include 'module:database:distributed-chat-system-mysql'
+findProject(':module:database:distributed-chat-system-mysql')?.name = 'distributed-chat-system-mysql'
+
+// [3] project modules
+include 'module:project:distributed-chat-system-client-api'
+findProject(':module:project:distributed-chat-system-client-api')?.name = 'distributed-chat-system-client-api'
+
+include 'module:project:distributed-chat-system-connection-status'
+findProject(':module:project:distributed-chat-system-connection-status')?.name = 'distributed-chat-system-connection-status'
+
+include 'module:project:distributed-chat-system-chatting'
+findProject(':module:project:distributed-chat-system-chatting')?.name = 'distributed-chat-system-chatting'
+
+include 'module:project:distributed-chat-system-notification'
+findProject(':module:project:distributed-chat-system-notification')?.name = 'distributed-chat-system-notification'
