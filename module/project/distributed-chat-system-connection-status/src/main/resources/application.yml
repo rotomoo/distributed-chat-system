@@ -1,0 +1,14 @@
+server:
+  port: 8096
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - web-socket-base
+      - connection-status
+
+  output:
+    ansi:
+      enabled: always

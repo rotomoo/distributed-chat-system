@@ -1,0 +1,5 @@
+dependencies {
+    implementation project(':module:common:distributed-chat-system-common')
+    implementation project(':module:common:distributed-chat-system-api-base')
+    implementation project(':module:database:distributed-chat-system-mysql')
+}

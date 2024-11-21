@@ -1,0 +1,13 @@
+server:
+  port: 8091
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - api-base
+
+  output:
+    ansi:
+      enabled: always

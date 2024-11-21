@@ -1,0 +1,13 @@
+server:
+  port: 8092
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - web-socket-base
+
+  output:
+    ansi:
+      enabled: always

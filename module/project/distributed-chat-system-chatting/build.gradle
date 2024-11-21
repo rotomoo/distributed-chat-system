@@ -1,0 +1,4 @@
+dependencies {
+    implementation project(':module:common:distributed-chat-system-common')
+    implementation project(':module:common:distributed-chat-system-web-socket-base')
+}
