@@ -14,6 +14,9 @@ findProject(':module:common:distributed-chat-system-web-socket-base')?.name = 'd
 include 'module:database:distributed-chat-system-mysql'
 findProject(':module:database:distributed-chat-system-mysql')?.name = 'distributed-chat-system-mysql'
 
+include 'module:database:distributed-chat-system-mongodb'
+findProject(':module:database:distributed-chat-system-mongodb')?.name = 'distributed-chat-system-mongodb'
+
 // [3] project modules
 include 'module:project:distributed-chat-system-client-api'
 findProject(':module:project:distributed-chat-system-client-api')?.name = 'distributed-chat-system-client-api'
