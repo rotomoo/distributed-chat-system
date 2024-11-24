@@ -174,6 +174,7 @@
             - 📁 distributed-chat-system-common
             - 📁 distributed-chat-system-web-socket-base
         - 📂 **database**
+            - 📁 distributed-chat-system-mongodb
             - 📁 distributed-chat-system-mysql
         - 📂 **project**
             - 📁 distributed-chat-system-chatting
@@ -194,7 +195,7 @@ distributed-chat-system
 ## 캐시 계층
 
 **Redis [Look Aside + Write Around 전략](https://rotomoo.tistory.com/99)**
-
+![caching-strategies](./image/caching-strategies.png)
 **CDN 적용**
 
 ## 모니터링
