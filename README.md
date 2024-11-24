@@ -148,7 +148,9 @@
 **Mysql**
 
 - 도메인 모델 분석
+  ![rdb_domain](./image/rdb_domain.png)
 - 테이블 설계
+  ![rdb_table](./image/rdb_table.png)
 - 분산 처리
     - Replication : 주(master) - 쓰기 연산, 부(slave) - 읽기 연산
     - 자동 Failover : 가용성 확보
@@ -191,7 +193,7 @@ distributed-chat-system
 
 ## 캐시 계층
 
-**Redis**
+**Redis [Look Aside + Write Around 전략](https://rotomoo.tistory.com/99)**
 
 **CDN 적용**
 
