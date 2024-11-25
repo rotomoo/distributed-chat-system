@@ -2,21 +2,20 @@ package com.distributed.chat.system.mongodb.entity;
 
 import com.distributed.chat.system.mongodb.enums.NotificationType;
 import java.time.Instant;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import org.springframework.data.mongodb.core.mapping.Document;
 
-public class Notification {
+@Getter
+@AllArgsConstructor
+@Document("notifications")
+public abstract class Notification {
 
     public String id;
     public Long userId;
-    public NotificationType notificationType;
+    public NotificationType type;
+    private Instant occurredAt; // 이벤트 발생 시간
     public Instant createdAt;
+    public Instant lastUpdatedAt;
     public Instant deletedAt;
-
-    public Notification(String id, Long userId, NotificationType notificationType,
-        Instant createdAt, Instant deletedAt) {
-        this.id = id;
-        this.userId = userId;
-        this.notificationType = notificationType;
-        this.createdAt = createdAt;
-        this.deletedAt = deletedAt;
-    }
 }

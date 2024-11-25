@@ -1,4 +1,6 @@
 dependencies {
     implementation project(':module:common:distributed-chat-system-common')
     implementation project(':module:common:distributed-chat-system-web-socket-base')
+    implementation project(':module:database:distributed-chat-system-mongodb')
+    implementation('org.springframework.cloud:spring-cloud-starter-stream-kafka')
 }

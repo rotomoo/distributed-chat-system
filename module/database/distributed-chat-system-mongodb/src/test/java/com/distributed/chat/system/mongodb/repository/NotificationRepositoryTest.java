@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.distributed.chat.system.mongodb.entity.CommentNotification;
 import com.distributed.chat.system.mongodb.entity.Notification;
 import com.distributed.chat.system.mongodb.enums.NotificationType;
 import java.time.Instant;
@@ -28,7 +29,8 @@ class NotificationRepositoryTest {
     @Test
     void test_save() {
         notificationRepository.save(
-            new Notification("1", userId, NotificationType.LIKE, now, ninetyDaysAfter));
+            new CommentNotification("1", userId, NotificationType.LIKE, now.plusSeconds(1), now,
+                now, ninetyDaysAfter, 1L, 1L, "test"));
 
         Optional<Notification> optionalNotification = notificationRepository.findById("1");
 
@@ -40,7 +42,8 @@ class NotificationRepositoryTest {
         String id = "2";
 
         notificationRepository.save(
-            new Notification(id, userId, NotificationType.LIKE, now, ninetyDaysAfter));
+            new CommentNotification(id, userId, NotificationType.LIKE, now.plusSeconds(1), now,
+                now, ninetyDaysAfter, 1L, 1L, "test"));
 
         Optional<Notification> optionalNotification = notificationRepository.findById(id);
 
@@ -56,7 +59,8 @@ class NotificationRepositoryTest {
         String id = "3";
 
         notificationRepository.save(
-            new Notification(id, userId, NotificationType.LIKE, now, ninetyDaysAfter));
+            new CommentNotification("1", userId, NotificationType.LIKE, now.plusSeconds(1), now,
+                now, ninetyDaysAfter, 1L, 1L, "test"));
 
         notificationRepository.deleteById(id);
 
