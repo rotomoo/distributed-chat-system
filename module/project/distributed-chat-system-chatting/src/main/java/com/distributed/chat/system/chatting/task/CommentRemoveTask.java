@@ -18,7 +18,7 @@ import java.util.Objects;
 public class CommentRemoveTask {
 
     private final PostClient postClient;
-    
+
     private final NotificationGetService notificationGetService;
 
     private final NotificationRemoveService notificationRemoveService;
@@ -30,7 +30,7 @@ public class CommentRemoveTask {
             return;
         }
 
-        notificationGetService.getNotification(NotificationType.COMMENT, event.getCommentId())
+        notificationGetService.getNotificationByTypeAndCommentId(NotificationType.COMMENT, event.getCommentId())
                 .ifPresentOrElse(
                         notification -> notificationRemoveService.deleteById(notification.getId()),
                         () -> log.error("notification not found")

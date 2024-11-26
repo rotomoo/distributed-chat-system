@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.bson.types.ObjectId;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.mapping.Field;
+import org.springframework.data.mongodb.core.mapping.FieldType;
 
 import java.time.Instant;
 
@@ -13,6 +15,7 @@ import java.time.Instant;
 @Document("notifications")
 public abstract class Notification {
 
+    @Field(targetType = FieldType.STRING)
     public String id;
     public Long userId;
     public NotificationType type;
@@ -20,6 +23,18 @@ public abstract class Notification {
     public Instant createdAt;
     public Instant lastUpdatedAt;
     public Instant deletedAt;
+
+    public void changeOccurredAt(Instant occurredAt) {
+        this.occurredAt = occurredAt;
+    }
+
+    public void changeDeletedAt(Instant deletedAt) {
+        this.deletedAt = deletedAt;
+    }
+
+    public void changeLastUpdatedAt(Instant lastUpdatedAt) {
+        this.lastUpdatedAt = lastUpdatedAt;
+    }
 
     public static String generateId() {
         return new ObjectId().toString();

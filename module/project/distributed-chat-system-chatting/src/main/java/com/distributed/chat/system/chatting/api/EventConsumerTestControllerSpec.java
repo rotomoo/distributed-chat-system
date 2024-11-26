@@ -1,6 +1,8 @@
 package com.distributed.chat.system.chatting.api;
 
 import com.distributed.chat.system.chatting.event.CommentEvent;
+import com.distributed.chat.system.chatting.event.FollowEvent;
+import com.distributed.chat.system.chatting.event.LikeEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
@@ -25,33 +27,33 @@ public interface EventConsumerTestControllerSpec {
     )
     void comment(CommentEvent event);
 
-//    @Operation(
-//            requestBody = @RequestBody(
-//                    content = {
-//                            @Content(
-//                                    mediaType = MediaType.APPLICATION_JSON_VALUE,
-//                                    examples = {
-//                                            @ExampleObject(name = "게시물 좋아요 이벤트", value = LIKE_EVENT_PAYLOAD)
-//                                    }
-//                            )
-//                    }
-//            )
-//    )
-//    void like(LikeEvent event);
-//
-//    @Operation(
-//            requestBody = @RequestBody(
-//                    content = {
-//                            @Content(
-//                                    mediaType = MediaType.APPLICATION_JSON_VALUE,
-//                                    examples = {
-//                                            @ExampleObject(name = "팔로우 이벤트", value = FOLLOW_EVENT_PAYLOAD)
-//                                    }
-//                            )
-//                    }
-//            )
-//    )
-//    void follow(FollowEvent event);
+    @Operation(
+            requestBody = @RequestBody(
+                    content = {
+                            @Content(
+                                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                                    examples = {
+                                            @ExampleObject(name = "게시물 좋아요 이벤트", value = LIKE_EVENT_PAYLOAD)
+                                    }
+                            )
+                    }
+            )
+    )
+    void like(LikeEvent event);
+
+    @Operation(
+            requestBody = @RequestBody(
+                    content = {
+                            @Content(
+                                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                                    examples = {
+                                            @ExampleObject(name = "팔로우 이벤트", value = FOLLOW_EVENT_PAYLOAD)
+                                    }
+                            )
+                    }
+            )
+    )
+    void follow(FollowEvent event);
 
     String COMMENT_EVENT_PAYLOAD = """
             {
@@ -62,21 +64,21 @@ public interface EventConsumerTestControllerSpec {
             }
             """;
 
-//    String LIKE_EVENT_PAYLOAD = """
-//            {
-//                "type": "ADD",
-//                "postId": 1,
-//                "userId": 2,
-//                "createdAt": "2024-08-08T18:25:43.511Z"
-//            }
-//            """;
-//
-//    String FOLLOW_EVENT_PAYLOAD = """
-//            {
-//                "type": "ADD",
-//                "userId": 2,
-//                "targetUserId": 1,
-//                "createdAt": "2024-08-08T18:25:43.511Z"
-//            }
-//            """;
+    String LIKE_EVENT_PAYLOAD = """
+            {
+                "type": "ADD",
+                "postId": 1,
+                "userId": 2,
+                "createdAt": "2024-08-08T18:25:43.511Z"
+            }
+            """;
+
+    String FOLLOW_EVENT_PAYLOAD = """
+            {
+                "type": "ADD",
+                "userId": 2,
+                "targetUserId": 1,
+                "createdAt": "2024-08-08T18:25:43.511Z"
+            }
+            """;
 }
