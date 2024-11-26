@@ -1,14 +1,16 @@
-package com.distributed.chat.system.mongodb;
+package com.distributed.chat.system.mongodb.collection;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+import java.time.Instant;
+
 @Getter
 @AllArgsConstructor
-public class Post {
+public class Comment {
 
     private Long id;
     private Long userId;
-    private String imageUrl;
     private String content;
+    private Instant createdAt;
 }

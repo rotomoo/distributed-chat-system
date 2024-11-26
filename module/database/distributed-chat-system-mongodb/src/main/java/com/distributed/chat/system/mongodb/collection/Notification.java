@@ -1,10 +1,12 @@
-package com.distributed.chat.system.mongodb.entity;
+package com.distributed.chat.system.mongodb.collection;
 
 import com.distributed.chat.system.mongodb.enums.NotificationType;
-import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import org.bson.types.ObjectId;
 import org.springframework.data.mongodb.core.mapping.Document;
+
+import java.time.Instant;
 
 @Getter
 @AllArgsConstructor
@@ -18,4 +20,8 @@ public abstract class Notification {
     public Instant createdAt;
     public Instant lastUpdatedAt;
     public Instant deletedAt;
+
+    public static String generateId() {
+        return new ObjectId().toString();
+    }
 }

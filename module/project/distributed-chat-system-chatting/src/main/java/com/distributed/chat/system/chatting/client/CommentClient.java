@@ -1,9 +1,13 @@
-package com.distributed.chat.system.mongodb;
+package com.distributed.chat.system.chatting.client;
+
+import com.distributed.chat.system.mongodb.collection.Comment;
+import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
+@Component
 public class CommentClient {
 
     private final Map<Long, Comment> comments = new HashMap<>();

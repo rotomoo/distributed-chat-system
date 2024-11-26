@@ -1,9 +1,11 @@
-package com.distributed.chat.system.chatting.event;
+package com.distributed.chat.system.chatting.consumer;
 
-import java.util.function.Consumer;
+import com.distributed.chat.system.chatting.event.LikeEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
+
+import java.util.function.Consumer;
 
 @Slf4j
 @Component

@@ -1,8 +1,12 @@
-package com.distributed.chat.system.mongodb;
+package com.distributed.chat.system.chatting.client;
+
+import com.distributed.chat.system.mongodb.collection.Post;
+import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
 
+@Component
 public class PostClient {
 
     private final Map<Long, Post> posts = new HashMap<>();

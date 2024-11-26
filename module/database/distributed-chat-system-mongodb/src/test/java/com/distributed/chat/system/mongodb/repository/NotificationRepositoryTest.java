@@ -1,19 +1,18 @@
 package com.distributed.chat.system.mongodb.repository;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import com.distributed.chat.system.mongodb.entity.CommentNotification;
-import com.distributed.chat.system.mongodb.entity.Notification;
+import com.distributed.chat.system.mongodb.collection.CommentNotification;
+import com.distributed.chat.system.mongodb.collection.Notification;
 import com.distributed.chat.system.mongodb.enums.NotificationType;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootApplication
 @SpringBootTest
@@ -29,8 +28,8 @@ class NotificationRepositoryTest {
     @Test
     void test_save() {
         notificationRepository.save(
-            new CommentNotification("1", userId, NotificationType.LIKE, now.plusSeconds(1), now,
-                now, ninetyDaysAfter, 1L, 1L, "test"));
+                new CommentNotification("1", userId, NotificationType.LIKE, now.plusSeconds(1), now,
+                        now, ninetyDaysAfter, 1L, 1L, "test", 1L));
 
         Optional<Notification> optionalNotification = notificationRepository.findById("1");
 
@@ -42,8 +41,8 @@ class NotificationRepositoryTest {
         String id = "2";
 
         notificationRepository.save(
-            new CommentNotification(id, userId, NotificationType.LIKE, now.plusSeconds(1), now,
-                now, ninetyDaysAfter, 1L, 1L, "test"));
+                new CommentNotification(id, userId, NotificationType.LIKE, now.plusSeconds(1), now,
+                        now, ninetyDaysAfter, 1L, 1L, "test", 1L));
 
         Optional<Notification> optionalNotification = notificationRepository.findById(id);
 
@@ -59,8 +58,8 @@ class NotificationRepositoryTest {
         String id = "3";
 
         notificationRepository.save(
-            new CommentNotification("1", userId, NotificationType.LIKE, now.plusSeconds(1), now,
-                now, ninetyDaysAfter, 1L, 1L, "test"));
+                new CommentNotification("1", userId, NotificationType.LIKE, now.plusSeconds(1), now,
+                        now, ninetyDaysAfter, 1L, 1L, "test", 1L));
 
         notificationRepository.deleteById(id);
 

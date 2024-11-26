@@ -1,32 +1,30 @@
 package com.distributed.chat.system.chatting.task;
 
+import com.distributed.chat.system.chatting.client.CommentClient;
+import com.distributed.chat.system.chatting.client.PostClient;
 import com.distributed.chat.system.chatting.event.CommentEvent;
-import com.distributed.chat.system.mongodb.Comment;
-import com.distributed.chat.system.mongodb.CommentClient;
-import com.distributed.chat.system.mongodb.NotificationIdGenerator;
-import com.distributed.chat.system.mongodb.NotificationSaveService;
-import com.distributed.chat.system.mongodb.Post;
-import com.distributed.chat.system.mongodb.PostClient;
-import com.distributed.chat.system.mongodb.entity.CommentNotification;
-import com.distributed.chat.system.mongodb.entity.Notification;
+import com.distributed.chat.system.chatting.service.NotificationSaveService;
+import com.distributed.chat.system.mongodb.collection.Comment;
+import com.distributed.chat.system.mongodb.collection.CommentNotification;
+import com.distributed.chat.system.mongodb.collection.Notification;
+import com.distributed.chat.system.mongodb.collection.Post;
 import com.distributed.chat.system.mongodb.enums.NotificationType;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Objects;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class CommentAddTask {
 
-    @Autowired
-    PostClient postClient;
+    private final PostClient postClient;
 
-    @Autowired
-    CommentClient commentClient;
+    private final CommentClient commentClient;
 
-    @Autowired
-    NotificationSaveService notificationSaveService;
+    private final NotificationSaveService notificationSaveService;
 
     public void processEvent(CommentEvent event) {
         // 나 자신 예외
@@ -45,16 +43,16 @@ public class CommentAddTask {
         Instant now = Instant.now();
 
         return new CommentNotification(
-            NotificationIdGenerator.generate(),
-            post.getUserId(),
-            NotificationType.COMMENT,
-            comment.getCreatedAt(),
-            now,
-            now,
-            now.plus(90, ChronoUnit.DAYS),
-            post.getId(),
-            comment.getUserId(),
-            comment.getContent()
-        );
+                CommentNotification.generateId(),
+                post.getUserId(),
+                NotificationType.COMMENT,
+                comment.getCreatedAt(),
+                now,
+                now,
+                now.plus(90, ChronoUnit.DAYS),
+                post.getId(),
+                comment.getUserId(),
+                comment.getContent(),
+                comment.getId());
     }
 }
