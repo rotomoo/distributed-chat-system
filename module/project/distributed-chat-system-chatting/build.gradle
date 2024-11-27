@@ -1,5 +1,7 @@
 dependencies {
     implementation project(':module:common:distributed-chat-system-common')
     implementation project(':module:common:distributed-chat-system-web-socket-base')
-    implementation project(':module:database:distributed-chat-system-mongodb')
+
+    // webSocket
+    implementation('org.springframework.boot:spring-boot-starter-websocket')
 }
