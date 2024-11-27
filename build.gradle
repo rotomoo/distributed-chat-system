@@ -2,6 +2,7 @@ buildscript {
     ext {
         springBootVersion = '3.3.5'
         managementVersion = '1.1.6'
+        springCloudVersion = "2023.0.0"
     }
 
     repositories {
@@ -52,7 +53,13 @@ subprojects {
         annotationProcessor 'org.projectlombok:lombok'
     }
 
-    tasks.named('test') {
+    dependencyManagement {
+        imports {
+            mavenBom("org.springframework.cloud:spring-cloud-dependencies:${property("springCloudVersion")}")
+        }
+    }
+
+    tasks.test {
         useJUnitPlatform()
     }
 }

@@ -1,0 +1,14 @@
+server:
+  port: 8210
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - web-socket-base
+      - kafka
+
+  output:
+    ansi:
+      enabled: always
