@@ -17,7 +17,11 @@ findProject(':module:database:distributed-chat-system-mysql')?.name = 'distribut
 include 'module:database:distributed-chat-system-mongodb'
 findProject(':module:database:distributed-chat-system-mongodb')?.name = 'distributed-chat-system-mongodb'
 
-// [3] project modules
+// [3] infra modules
+include 'module:infra:distributed-chat-system-kafka'
+findProject(':module:infra:distributed-chat-system-kafka')?.name = 'distributed-chat-system-kafka'
+
+// [4] project modules
 include 'module:project:distributed-chat-system-client-api'
 findProject(':module:project:distributed-chat-system-client-api')?.name = 'distributed-chat-system-client-api'
 
