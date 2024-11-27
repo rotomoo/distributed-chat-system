@@ -1,5 +1,5 @@
 server:
-  port: 8095
+  port: 8210
 
 spring:
   profiles:
@@ -7,7 +7,7 @@ spring:
     include:
       - common
       - web-socket-base
-      - chatting
+      - kafka
 
   output:
     ansi:
