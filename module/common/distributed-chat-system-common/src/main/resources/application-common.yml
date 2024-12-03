@@ -3,6 +3,10 @@ spring:
     activate:
       on-profile: default
 
+jasypt:
+  encryptor:
+    password:${jasypt_encryptor_password}
+
 ---
 
 spring:
