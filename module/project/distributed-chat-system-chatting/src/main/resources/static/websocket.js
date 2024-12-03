@@ -16,7 +16,7 @@ function onClose() {
 }
 
 function connect() {
-    websocket = new WebSocket("ws://localhost:8095/ws/chats");
+    websocket = new WebSocket("ws://localhost:7777/ws/chats");
     websocket.onmessage = onMessage;
     websocket.onopen = onOpen;
     websocket.onclose = onClose;
@@ -33,10 +33,9 @@ function disconnect() {
 }
 
 function sendMessage() {
-    let username = document.getElementById("username");
     let message = document.getElementById("message");
 
-    websocket.send(username.value + ":" + message.value);
+    websocket.send(message.value);
     message.value = "";
     console.log("sent: send()");
 }
