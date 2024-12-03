@@ -34,3 +34,33 @@ services:
     ports:
       - "8989:8080"
     restart: always
+
+  chatting-1:
+    image: quddlf410/dcs-chatting
+    build:
+      context: /module/project/distributed-chat-system-chatting
+      dockerfile: Dockerfile
+    ports:
+      - "7777:7777"
+    environment:
+      - SERVER_PORT=7777
+
+  chatting-2:
+    image: quddlf410/dcs-chatting
+    build:
+      context: /module/project/distributed-chat-system-chatting
+      dockerfile: Dockerfile
+    ports:
+      - "7778:7778"
+    environment:
+      - SERVER_PORT=7778
+
+  chatting-3:
+    image: quddlf410/dcs-chatting
+    build:
+      context: /module/project/distributed-chat-system-chatting
+      dockerfile: Dockerfile
+    ports:
+      - "7779:7779"
+    environment:
+      - SERVER_PORT=7779
