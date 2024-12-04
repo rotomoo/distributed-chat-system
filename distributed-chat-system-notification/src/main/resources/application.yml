@@ -1,0 +1,13 @@
+server:
+  port: 7690
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - notification
+
+  output:
+    ansi:
+      enabled: always

@@ -1,0 +1,29 @@
+spring:
+  config:
+    activate:
+      on-profile: default
+
+jasypt:
+  encryptor:
+    password: ${jasypt_encryptor_password}
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: stage
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: prod

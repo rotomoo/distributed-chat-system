@@ -1,35 +1,27 @@
 rootProject.name = 'distributed-chat-system'
 
 // [1] common modules
-include 'module:common:distributed-chat-system-api-base'
-findProject(':module:common:distributed-chat-system-api-base')?.name = 'distributed-chat-system-api-base'
+include 'common:distributed-chat-system-common'
+findProject(':common:distributed-chat-system-common')?.name = 'distributed-chat-system-common'
 
-include 'module:common:distributed-chat-system-common'
-findProject(':module:common:distributed-chat-system-common')?.name = 'distributed-chat-system-common'
+// [2] infra modules
+include 'infra:distributed-chat-system-kafka-consumer'
+findProject(':infra:distributed-chat-system-kafka-consumer')?.name = 'distributed-chat-system-kafka-consumer'
 
-include 'module:common:distributed-chat-system-web-socket-base'
-findProject(':module:common:distributed-chat-system-web-socket-base')?.name = 'distributed-chat-system-web-socket-base'
+include 'infra:distributed-chat-system-kafka-producer'
+findProject(':infra:distributed-chat-system-kafka-producer')?.name = 'distributed-chat-system-kafka-producer'
 
-// [2] database modules
-include 'module:database:distributed-chat-system-mysql'
-findProject(':module:database:distributed-chat-system-mysql')?.name = 'distributed-chat-system-mysql'
+include 'infra:distributed-chat-system-mongodb'
+findProject(':infra:distributed-chat-system-mongodb')?.name = 'distributed-chat-system-mongodb'
 
-include 'module:database:distributed-chat-system-mongodb'
-findProject(':module:database:distributed-chat-system-mongodb')?.name = 'distributed-chat-system-mongodb'
+include 'infra:distributed-chat-system-mysql'
+findProject(':infra:distributed-chat-system-mysql')?.name = 'distributed-chat-system-mysql'
 
-// [3] infra modules
-include 'module:infra:distributed-chat-system-kafka'
-findProject(':module:infra:distributed-chat-system-kafka')?.name = 'distributed-chat-system-kafka'
+// [3] project modules
+include 'distributed-chat-system-chatting'
 
-// [4] project modules
-include 'module:project:distributed-chat-system-client-api'
-findProject(':module:project:distributed-chat-system-client-api')?.name = 'distributed-chat-system-client-api'
+include 'distributed-chat-system-client-api'
 
-include 'module:project:distributed-chat-system-connection-status'
-findProject(':module:project:distributed-chat-system-connection-status')?.name = 'distributed-chat-system-connection-status'
+include 'distributed-chat-system-connection-status'
 
-include 'module:project:distributed-chat-system-chatting'
-findProject(':module:project:distributed-chat-system-chatting')?.name = 'distributed-chat-system-chatting'
-
-include 'module:project:distributed-chat-system-notification'
-findProject(':module:project:distributed-chat-system-notification')?.name = 'distributed-chat-system-notification'
+include 'distributed-chat-system-notification'
