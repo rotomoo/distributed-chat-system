@@ -20,7 +20,7 @@ public class CustomOncePerRequestFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         log.info("CustomOncePerRequestFilter IN");
-
+        
         HttpSession session = request.getSession(false);
 
         if (session != null) {

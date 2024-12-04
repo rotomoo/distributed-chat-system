@@ -2,14 +2,14 @@ package com.distributed.chat.system.client.api.base.config;
 
 import com.distributed.chat.system.client.api.base.filter.CustomOncePerRequestFilter;
 import com.distributed.chat.system.client.api.base.security.CustomUserDetailsService;
+import com.distributed.chat.system.client.api.base.security.LoginFailHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractAuthenticationFilterConfigurer;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.config.annotation.web.configurers.LogoutConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -35,21 +35,25 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
+                .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests((requests) -> requests
                                 .requestMatchers(privatePaths).authenticated()
                                 .requestMatchers(publicPaths).permitAll()
 //                        .anyRequest().authenticated()
                                 .anyRequest().permitAll()
                 )
-                .addFilterBefore(new CustomOncePerRequestFilter(), UsernamePasswordAuthenticationFilter.class)
-                .formLogin(AbstractAuthenticationFilterConfigurer::permitAll)
-                .logout(LogoutConfigurer::permitAll)
-                .sessionManagement(sessionManagement -> sessionManagement
-                        .maximumSessions(10)
-                        .maxSessionsPreventsLogin(true)
+                .formLogin((config) ->
+                        config.loginProcessingUrl("/login")
+                                .usernameParameter("account")
+                                .passwordParameter("password")
+                                .permitAll()
+                                .failureHandler(new LoginFailHandler())
+                )
+                .sessionManagement((config) ->
+                        config.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .userDetailsService(customUserDetailsService)
-                .csrf(AbstractHttpConfigurer::disable)
+                .addFilterBefore(new CustomOncePerRequestFilter(), UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
 

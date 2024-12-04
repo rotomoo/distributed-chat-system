@@ -27,5 +27,4 @@ public class AuthenticationController {
 
         return new ResponseEntity<>(responseData, HttpStatus.OK);
     }
-
 }

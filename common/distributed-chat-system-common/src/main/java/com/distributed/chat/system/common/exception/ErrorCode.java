@@ -10,7 +10,8 @@ import static org.springframework.http.HttpStatus.BAD_REQUEST;
 @AllArgsConstructor
 public enum ErrorCode {
 
-    ALREADY_USE_ACCOUNT(1001, BAD_REQUEST, "이미 가입되어있는 계정입니다.");
+    ALREADY_USING_ACCOUNT(1001, BAD_REQUEST, "이미 사용중인 계정입니다."),
+    NOT_EXIST_ACCOUNT(1002, BAD_REQUEST, "없는 계정입니다.");
 
     private final int customCode;
     private final HttpStatus httpStatus;
