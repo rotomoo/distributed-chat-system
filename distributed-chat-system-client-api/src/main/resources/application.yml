@@ -1,0 +1,14 @@
+server:
+  port: 7670
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - mysql
+      - client-api
+
+  output:
+    ansi:
+      enabled: always

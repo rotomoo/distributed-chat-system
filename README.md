@@ -3,17 +3,53 @@
 ## 목차
 
 [사용법](#사용법)  
-[기능 요구사항](#기능-요구사항)  
-[개략적 규모 추정](#개략적-규모-추정)  
-[아키텍처 설계](#아키텍처-설계)  
-[기능 목록](#기능-목록)  
-[DB 설계](#DB-설계)  
-[채팅 메시지 흐름](#채팅-메시지-흐름)  
 [모듈 계층](#모듈-계층)  
-[캐시 계층](#캐시-계층)  
-[모니터링](#모니터링)
+[아키텍처 설계](#아키텍처-설계)  
+[설계과정](#설계과정)  
+&nbsp;&nbsp;&nbsp;[기능 요구사항](#기능-요구사항)  
+&nbsp;&nbsp;&nbsp;[개략적 규모 추정](#개략적-규모-추정)  
+&nbsp;&nbsp;&nbsp;[기능 목록](#기능-목록)  
+&nbsp;&nbsp;&nbsp;[DB 설계](#DB-설계)  
+&nbsp;&nbsp;&nbsp;[채팅 메시지 흐름](#채팅-메시지-흐름)  
+&nbsp;&nbsp;&nbsp;[웹 계층](#웹-계층)  
+&nbsp;&nbsp;&nbsp;[캐시 계층](#캐시-계층)  
+&nbsp;&nbsp;&nbsp;[모니터링](#모니터링)
 
 ## 사용법
+
+```markdown
+**If ports 2181, 9092, 8989, 7777, 7778, 7779 are in use, kill them.**
+
+1. docker-compose up -d
+
+2. visit localhost:8080
+```
+
+## 모듈 계층
+
+- **distributed-chat-system**
+    - 📂 **common**
+        - 📁 distributed-chat-system-common
+    - 📂 **infra**
+        - 📁 distributed-chat-kafka-consumer
+        - 📁 distributed-chat-kafka-producer
+        - 📁 distributed-chat-system-mongodb
+        - 📁 distributed-chat-system-mysql
+    - 📁 distributed-chat-system-chatting
+    - 📁 distributed-chat-system-client-api
+    - 📁 distributed-chat-system-connection-status
+    - 📁 distributed-chat-system-notification
+
+```
+distributed-chat-system
+  ├── common    # 1 depth - 공통 기능 모듈
+  ├── infra     # 2 depth - 인프라 관련 모듈
+  └             # 3 depth - 프로젝트 모듈
+```
+
+## 아키텍처 설계
+
+# 설계과정
 
 ## 기능 요구사항
 
@@ -36,45 +72,50 @@
 
 - Mysql
 
-  유저, 채널, 설정 데이터 저장
+  회원, 팀, 채널 데이터 저장
 
 
 - MongoDB
 
-  텍스트 메시지, 메타데이터, 이모티콘 반응, 댓글 저장
-
+  메시지, 이모티콘 반응, 댓글, 메타데이터 저장  
+  <br>
   예시
 
     ```json
     {
-      "chatRoomId": "room_12345",
-      "participants": ["user_001", "user_002", "user_003"],
-      "messages": [
+      "messageId": "1353215",
+      "channelId": "12345",
+      "createdUserId": "1142",
+      "content": "안녕하세요!",
+      "created_dt": "2024-11-18T10:30:00Z",
+      "reactions": [
         {
-          "messageId": "msg_001",
-          "userId": "user_001",
-          "content": "안녕하세요!",
-          "timestamp": "2024-11-18T10:30:00Z",
-          "reactions": {"👍": 10, "❤️": 5},
-          "comments": [
-            {
-              "commentId": "cmt_001",
-              "userId": "user_002",
-              "content": "반가워요!",
-              "timestamp": "2024-11-18T10:35:00Z"
-            }
-          ],
-          "attachments": [
-            {
-              "type": "image",
-              "url": "https://s3.amazonaws.com/bucket/file_001.jpg"
-            }
-          ]
+          "emoji": "👍",
+          "count": 3,
+          "users": ["user2", "user3","user4"]
+        },
+        {
+          "emoji": "😂",
+          "count": 1,
+          "users": ["user5"]
+        }
+      ]
+      "comments": [
+        {
+          "commentId": "1241242",
+          "userId": "114346",
+          "content": "반가워요!",
+          "created_dt": "2024-11-18T10:35:00Z"
+        }
+      ],
+      "attachments": [
+        {
+          "type": "image",
+          "url": "https://s3.amazonaws.com/bucket/file_001.jpg"
         }
       ]
     }
     ```
-
 
 - S3
 
@@ -111,24 +152,13 @@
 
 <br>
 
-## 아키텍처 설계
-
 ## 기능 목록
 
 **client-api 서버**
 
 - 회원가입
 - 로그인
-- 팀 목록 조회
-- 팀 참가
-- 팀 알림 음소거
-- 멘션 회원 목록 조회
-
-<br>
-
-**connection-status 서버**
-
-- 팀 사용자 접속상태 목록 조회
+    - 로그인시 chatting 서버 탐색 (zookeeper)
 
 <br>
 
@@ -136,12 +166,21 @@
 
 - 메시지 전송
 - 메시지 수신
+- 팀 목록 조회
+- 멘션 회원 목록 조회
+
+<br>
+
+
+**connection-status 서버**
+
+- 팀 사용자 접속상태 목록 조회
 
 <br>
 
 **notification 서버**
 
-- 미수신 메시지 푸시
+- 미수신 메시지 푸시(웹 푸시 + 안읽은 메시지 수 cnt)
 
 ## DB 설계
 
@@ -161,36 +200,29 @@
 
 - 컬렉션 설계
 - 분산 처리
-    - 샤딩 : 샤드 키
+    - 샤딩 키 : channelId
 
 ## 채팅 메시지 흐름
 
-## 모듈 계층
-
-- **distributed-chat-system**
-    - 📂 **module**
-        - 📂 **common**
-            - 📁 distributed-chat-system-api-base
-            - 📁 distributed-chat-system-common
-            - 📁 distributed-chat-system-web-socket-base
-        - 📂 **database**
-            - 📁 distributed-chat-system-mongodb
-            - 📁 distributed-chat-system-mysql
-        - 📂 **project**
-            - 📁 distributed-chat-system-chatting
-            - 📁 distributed-chat-system-client-api
-            - 📁 distributed-chat-system-connection-status
-            - 📁 distributed-chat-system-notification
-
 <br>
 
-~~~
-distributed-chat-system
-  └── module
-      ├── common    # 공통 기능 모듈
-      ├── database  # 데이터베이스 관련 모듈
-      └── project   # 비즈니스 관련 모듈
-~~~
+## 웹 계층
+
+**무상태(stateless) 계층**
+
+- client-api 서버
+
+**상태 계층**
+
+- chatting 서버
+- connection-status 서버
+- notification 서버
+
+**서버 간 세션 공유**
+
+- 중앙 저장소 - Redis
+
+<br>
 
 ## 캐시 계층
 

@@ -1,0 +1,13 @@
+server:
+  port: 7640
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - mongodb
+
+  output:
+    ansi:
+      enabled: always

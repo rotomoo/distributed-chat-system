@@ -1,0 +1,13 @@
+server:
+  port: 7777
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - chatting
+
+  output:
+    ansi:
+      enabled: always
