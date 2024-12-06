@@ -1,22 +1,12 @@
 package com.distributed.chat.system.mysql.entity;
 
 import com.distributed.chat.system.mysql.entity.base.BaseTimeEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import jakarta.persistence.*;
+import lombok.*;
 
 @Entity
 @Table(name = "user", indexes = {
-    @Index(name = "ix_user_user_name", columnList = "userName")
+        @Index(name = "ix_user_user_name", columnList = "userName")
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -37,9 +27,6 @@ public class User extends BaseTimeEntity {
 
     @Column(columnDefinition = "varchar(255) not null comment '비밀번호'")
     private String password;
-
-    @Column(columnDefinition = "varchar(50) not null comment '비밀번호 salt'")
-    private String salt;
 
     @Column(columnDefinition = "boolean not null default false comment '삭제 여부'")
     private Boolean deletedYn;

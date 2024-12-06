@@ -4,12 +4,10 @@ import com.distributed.chat.system.client.api.web.dto.authentication.SignupReque
 import com.distributed.chat.system.common.exception.ApiException;
 import com.distributed.chat.system.common.exception.ErrorCode;
 import com.distributed.chat.system.common.response.ResponseData;
-import com.distributed.chat.system.common.util.StringUtil;
 import com.distributed.chat.system.mysql.entity.User;
 import com.distributed.chat.system.mysql.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,9 +23,6 @@ public class AuthenticationService {
 
     private final PasswordEncoder passwordEncoder;
 
-    private final AuthenticationManagerBuilder authenticationManagerBuilder;
-
-
     /**
      * 회원가입
      *
@@ -38,7 +33,7 @@ public class AuthenticationService {
     public ResponseData signup(SignupRequestDto signupRequestDto) {
 
         if (userRepository.existsByAccount(signupRequestDto.getAccount())) {
-            throw new ApiException(ErrorCode.ALREADY_USE_ACCOUNT);
+            throw new ApiException(ErrorCode.ALREADY_USING_ACCOUNT);
         }
 
         User user = signupUser(signupRequestDto);
@@ -57,7 +52,6 @@ public class AuthenticationService {
                 .account(signupRequestDto.getAccount())
                 .userName(signupRequestDto.getAccount())
                 .password(passwordEncoder.encode(signupRequestDto.getPassword()))
-                .salt(StringUtil.createSalt())
                 .deletedYn(false)
                 .build();
 

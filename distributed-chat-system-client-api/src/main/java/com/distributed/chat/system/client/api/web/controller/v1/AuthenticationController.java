@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/v1/public/auth")
+@RequestMapping("/v1/public/api/auth")
 @RequiredArgsConstructor
 @Slf4j
 public class AuthenticationController {
@@ -27,5 +27,4 @@ public class AuthenticationController {
 
         return new ResponseEntity<>(responseData, HttpStatus.OK);
     }
-
 }
