@@ -1,8 +1,8 @@
 package com.distributed.chat.system.client.api.base.config;
 
 import com.distributed.chat.system.client.api.base.filter.CustomOncePerRequestFilter;
+import com.distributed.chat.system.client.api.base.security.CustomAuthenticationSuccessHandler;
 import com.distributed.chat.system.client.api.base.security.CustomUserDetailsService;
-import com.distributed.chat.system.client.api.base.security.LoginFailHandler;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -15,6 +15,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
@@ -26,9 +27,6 @@ public class SecurityConfig {
 
     private final String[] publicPaths = List.of(
         "/v1/public/**",
-        "/*.html",
-        "/*.js",
-        "/*.css",
         "/"
     ).toArray(new String[0]);
 
@@ -44,7 +42,10 @@ public class SecurityConfig {
             "/actuator/**",
             "/error",
             "/swagger-ui/**",
-            "/v3/**"
+            "/v3/**",
+            "/*.html",
+            "/*.js",
+            "/*.css"
         );
     }
 
@@ -60,9 +61,9 @@ public class SecurityConfig {
             .formLogin((config) ->
                 config.loginProcessingUrl("/login")
                     .usernameParameter("account")
-                    .passwordParameter("password")
+                    .successHandler(new CustomAuthenticationSuccessHandler())
+                    .failureHandler(new SimpleUrlAuthenticationFailureHandler())
                     .permitAll()
-                    .failureHandler(new LoginFailHandler())
             )
             .sessionManagement((config) ->
                 config.sessionCreationPolicy(SessionCreationPolicy.STATELESS)

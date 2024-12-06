@@ -27,7 +27,7 @@ document.getElementById('signup-form').addEventListener('submit',
       const messageElement = document.getElementById('signup-message');
 
       try {
-        const response = await fetch('/v1/public/auth/signup', {
+        const response = await fetch('/v1/public/api/auth/signup', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
