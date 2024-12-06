@@ -1,0 +1,31 @@
+spring:
+  config:
+    activate:
+      on-profile: default
+
+  cloud:
+    zookeeper:
+      connect-string: localhost:2181
+      discovery:
+        enabled: true
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: stage
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: prod

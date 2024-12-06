@@ -1,0 +1,13 @@
+server:
+  port: 7710
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - service-discovery
+
+  output:
+    ansi:
+      enabled: always
