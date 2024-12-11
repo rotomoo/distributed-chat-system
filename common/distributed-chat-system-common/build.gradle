@@ -2,6 +2,10 @@ dependencies {
     implementation('com.github.ulisesbocchio:jasypt-spring-boot-starter:3.0.5')
 }
 
-bootJar.enabled = false
+bootJar {
+    enabled = false
+}
 
-jar.enabled = true
+jar {
+    enabled = true
+}
