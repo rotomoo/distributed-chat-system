@@ -1,5 +1,5 @@
 server:
-  port: 7777
+  port: 0 # random
 
 spring:
   profiles:

@@ -3,11 +3,18 @@ spring:
     activate:
       on-profile: default
 
-  cloud:
-    zookeeper:
-      connect-string: localhost:2181
-      discovery:
-        enabled: true
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    registry-fetch-interval-seconds: 5 # 레지스트리 갱신 주기 (default 30초)
+    disable-delta: true # 변경된 부분만 업데이트
+    service-url:
+      defaultZone: http://localhost:7710/eureka/
+
+  server:
+    response-cache-update-interval-ms: 5000 # 캐싱 업데이트 주기 (default 30000ms)
+    eviction-interval-timer-in-ms: 5000  # 클라이언트로부터 하트비트가 계속 수신 되는지 점검 (default 60000ms)
 
 ---
 

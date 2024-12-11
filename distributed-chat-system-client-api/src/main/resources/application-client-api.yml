@@ -7,7 +7,7 @@ spring:
     store-type: redis
 
 service-discovery:
-  url: http://localhost:7710/v1/public/api/service-discovery
+  url: http://localhost:7710/
 
 ---
 
