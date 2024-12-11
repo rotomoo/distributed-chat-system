@@ -4,3 +4,11 @@ dependencies {
     // kafka
     implementation('org.springframework.cloud:spring-cloud-starter-stream-kafka')
 }
+
+bootJar {
+    enabled = false
+}
+
+jar {
+    enabled = true
+}

@@ -5,6 +5,10 @@ dependencies {
     implementation('org.springframework.boot:spring-boot-starter-data-mongodb')
 }
 
-bootJar.enabled = false
+bootJar {
+    enabled = false
+}
 
-jar.enabled = true
+jar {
+    enabled = true
+}

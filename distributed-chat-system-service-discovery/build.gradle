@@ -1,6 +1,9 @@
 dependencies {
     implementation project(':common:distributed-chat-system-common')
 
-    // zookeeper
-    implementation 'org.springframework.cloud:spring-cloud-starter-zookeeper-discovery'
+    // eureka-server
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-server'
+
+    // loadbalancer
+    implementation 'org.springframework.cloud:spring-cloud-starter-loadbalancer'
 }

@@ -7,4 +7,7 @@ dependencies {
     // security
     implementation('org.springframework.boot:spring-boot-starter-security')
     testImplementation('org.springframework.security:spring-security-test')
+
+    // eureka-client
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 }

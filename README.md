@@ -18,9 +18,9 @@
 ## 사용법
 
 ```markdown
-**If ports 2181, 9092, 8989, 7777, 7778, 7779 are in use, kill them.**
+**If ports 2181, 8989 are in use, kill them.**
 
-1. docker-compose up -d
+1. docker-compose up --build
 
 2. visit localhost:8080
 ```
@@ -154,15 +154,14 @@ distributed-chat-system
 
 ## 기능 목록
 
-**client-api 서버**
+**client-api service**
 
 - 회원가입
 - 로그인
-    - 로그인시 chatting 서버 탐색 (zookeeper)
 
 <br>
 
-**chatting 서버**
+**chatting service**
 
 - 메시지 전송
 - 메시지 수신
@@ -172,15 +171,23 @@ distributed-chat-system
 <br>
 
 
-**connection-status 서버**
+**connection-status service**
 
 - 팀 사용자 접속상태 목록 조회
 
 <br>
 
-**notification 서버**
+**notification service**
 
-- 미수신 메시지 푸시(웹 푸시 + 안읽은 메시지 수 cnt)
+- 미수신 메시지 푸시 (웹 푸시 + 안읽은 메시지 수 cnt)
+
+<br>
+
+**service-discovery service**
+
+- client-side discovery (spring-cloud-eureka)
+    - chatting service
+      loadbalancer [(spring-cloud-loadbalancer, round-robin)](https://docs.spring.io/spring-cloud-commons/reference/spring-cloud-commons/loadbalancer.html)
 
 ## DB 설계
 
@@ -200,27 +207,29 @@ distributed-chat-system
 
 - 컬렉션 설계
 - 분산 처리
-    - 샤딩 키 : channelId
+    - 샤딩 키 : ChannelId
 
 ## 채팅 메시지 흐름
 
+**Client-Server 양방향 통신 [Web Socket 프로토콜](https://rotomoo.tistory.com/100)**
 <br>
 
 ## 웹 계층
 
-**무상태(stateless) 계층**
+**무상태 서비스 (Stateless Services)**
 
-- client-api 서버
+- client-api service
+- service-discovery service
 
-**상태 계층**
+**상태 유지 서비스 (Stateful Services)**
 
-- chatting 서버
-- connection-status 서버
-- notification 서버
+- chatting service
+- connection-status service
+- notification service
 
-**서버 간 세션 공유**
+**세션 관리**
 
-- 중앙 저장소 - Redis
+- Shared Session Store - Redis 기반 세션 중앙화
 
 <br>
 
