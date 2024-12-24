@@ -1,14 +1,14 @@
 package com.distributed.chat.system.common.config;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import org.jasypt.encryption.pbe.PBEStringCleanablePasswordEncryptor;
 import org.jasypt.encryption.pbe.StandardPBEStringEncryptor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
-@DisplayName("jasypt 테스트")
-class JasyptConfigTest {
+@DisplayName("[단위] jasypt 테스트")
+class JasyptUnitTest {
 
     @Test
     @DisplayName("true case: jasypt 복호화 테스트")
