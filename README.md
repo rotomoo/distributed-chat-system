@@ -17,22 +17,30 @@
 
 ## 사용법
 
-```markdown
-**If ports 2181, 8989 are in use, kill them.**
+```bash
+# 포트 2181, 5044, 5601, 8989, 9200, 9300, 9600, 50000이 사용 중인 경우 종료합니다.
 
-1. docker-compose up --build
+- frist run
+# 처음 실행은, ELK stack을 설치해줍니다.
+docker-compose -f infra/distributed-chat-system-elk/docker-compose.yml up setup
 
-2. visit localhost:8080
+- after
+# 이후, 애플리케이션을 빌드하고 실행합니다.
+docker-compose up --build
+
+# 웹에 접속합니다.
+http://localhost:8080
 ```
 
 ## 모듈 계층
 
-- **distributed-chat-system**
-    - 📂 **common**
+- distributed-chat-system
+    - 📂 common
         - 📁 distributed-chat-system-common
-    - 📂 **infra**
-        - 📁 distributed-chat-kafka-consumer
-        - 📁 distributed-chat-kafka-producer
+    - 📂 infra
+        - 📁 distributed-chat-system-elk
+        - 📁 distributed-chat-system-kafka-consumer
+        - 📁 distributed-chat-system-kafka-producer
         - 📁 distributed-chat-system-mongodb
         - 📁 distributed-chat-system-mysql
     - 📁 distributed-chat-system-chatting

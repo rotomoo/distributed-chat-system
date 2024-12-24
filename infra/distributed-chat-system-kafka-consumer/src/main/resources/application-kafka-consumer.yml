@@ -51,23 +51,3 @@ spring:
   config:
     activate:
       on-profile: prod
----
-
-spring:
-  config:
-    activate:
-      on-profile: dev
-
----
-
-spring:
-  config:
-    activate:
-      on-profile: stage
-
----
-
-spring:
-  config:
-    activate:
-      on-profile: prod

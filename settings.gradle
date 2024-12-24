@@ -4,6 +4,8 @@ rootProject.name = 'distributed-chat-system'
 include 'common:distributed-chat-system-common'
 
 // [2] infra modules
+include 'infra:distributed-chat-system-elk'
+
 include 'infra:distributed-chat-system-kafka-consumer'
 
 include 'infra:distributed-chat-system-kafka-producer'

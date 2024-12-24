@@ -12,6 +12,8 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-1:29092,EXTERNAL://localhost:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - distributed-chat-system
 
   kafka-ui:
     image: provectuslabs/kafka-ui:v0.7.2
@@ -24,6 +26,8 @@ services:
     ports:
       - "8989:8080"
     restart: always
+    networks:
+      - distributed-chat-system
 
   #  eureka:
 
@@ -32,6 +36,8 @@ services:
     build:
       context: .
       dockerfile: ./distributed-chat-system-chatting/Dockerfile
+    networks:
+      - distributed-chat-system
   #    depends_on:
   #      - eureka
 
@@ -40,9 +46,27 @@ services:
     build:
       context: .
       dockerfile: ./distributed-chat-system-chatting/Dockerfile
+    networks:
+      - distributed-chat-system
 
   chatting-3:
     container_name: chatting-3
     build:
       context: .
       dockerfile: ./distributed-chat-system-chatting/Dockerfile
+    networks:
+      - distributed-chat-system
+
+  elk:
+    extends:
+      file: ./infra/distributed-chat-system-elk/docker-compose.yml
+      service: elasticsearch
+    networks:
+      - distributed-chat-system
+
+networks:
+  distributed-chat-system:
+    driver: bridge
+
+volumes:
+  elasticsearch:
