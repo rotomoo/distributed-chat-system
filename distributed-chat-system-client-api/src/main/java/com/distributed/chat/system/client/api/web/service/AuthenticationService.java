@@ -6,13 +6,12 @@ import com.distributed.chat.system.common.exception.ErrorCode;
 import com.distributed.chat.system.common.response.ResponseData;
 import com.distributed.chat.system.mysql.entity.User;
 import com.distributed.chat.system.mysql.repository.UserRepository;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -31,32 +30,25 @@ public class AuthenticationService {
      */
     @Transactional
     public ResponseData signup(SignupRequestDto signupRequestDto) {
-
         if (userRepository.existsByAccount(signupRequestDto.getAccount())) {
             throw new ApiException(ErrorCode.ALREADY_USING_ACCOUNT);
         }
 
-        User user = signupUser(signupRequestDto);
+        User user = saveUser(signupRequestDto);
 
-        return ResponseData.success("회원가입", Map.of("userId", user.getId()));
+        return ResponseData.success("회원가입", Map.of("user", user));
     }
 
-    /**
-     * 회원가입 user 저장 후 반환
-     *
-     * @param signupRequestDto
-     * @return
-     */
-    private User signupUser(SignupRequestDto signupRequestDto) {
-        User user = User.builder()
-                .account(signupRequestDto.getAccount())
-                .userName(signupRequestDto.getAccount())
-                .password(passwordEncoder.encode(signupRequestDto.getPassword()))
-                .deletedYn(false)
-                .build();
+    public User saveUser(SignupRequestDto signupRequestDto) {
+        return userRepository.save(createUserEntity(signupRequestDto));
+    }
 
-        userRepository.save(user);
-
-        return user;
+    public User createUserEntity(SignupRequestDto signupRequestDto) {
+        return User.builder()
+            .account(signupRequestDto.getAccount())
+            .userName(signupRequestDto.getAccount())
+            .password(passwordEncoder.encode(signupRequestDto.getPassword()))
+            .deletedYn(false)
+            .build();
     }
 }
