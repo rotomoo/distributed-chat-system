@@ -1,55 +1,39 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Hello WebSocket</title>
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"
-          integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
-    <link href="/main.css" rel="stylesheet">
-    <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
-    <script src="/websocket.js"></script>
+  <title>WebSocket test</title>
+  <link rel="stylesheet"
+        href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"
+        integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u"
+        crossorigin="anonymous">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"
+        rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+  <script src="script.js" defer></script>
 </head>
 <body>
-<noscript><h2 style="color: #ff0000">Seems your browser doesn't support Javascript! Websocket relies on Javascript being
-    enabled. Please enable
-    Javascript and reload this page!</h2></noscript>
+<noscript>
+  <h2 style="color: #ff0000">Seems your browser doesn't support Javascript! WebSocket relies on
+    Javascript being enabled. Please enable Javascript and reload this page!</h2>
+</noscript>
 <div id="main-content" class="container">
-    <div class="row">
-        <div class="col-md-6">
-            <form class="form-inline">
-                <div class="form-group">
-                    <label for="connect">WebSocket connection:</label>
-                    <button id="connect" class="btn btn-default" type="button">Connect</button>
-                    <button id="disconnect" class="btn btn-default" disabled="disabled" type="button">Disconnect
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-    <div class="row">
-        <div class="col-md-12">
-            <form class="form-inline">
-                <div class="form-group">
-                    <label for="send">Message</label>
-                    <input type="text" id="message" class="form-control" placeholder="message to send">
-                </div>
-                <button id="send" class="btn btn-default" type="button">Send</button>
-            </form>
-        </div>
-    </div>
-    <div class="row">
-        <div class="col-md-12">
-            <table id="conversation" class="table table-striped">
-                <thead>
-                <tr>
-                    <th>Messages</th>
-                </tr>
-                </thead>
-                <tbody id="messages">
-                </tbody>
-            </table>
-        </div>
-    </div>
+  <div class="header">
+    <h1><i class="fas fa-comments"></i> Chat Room</h1>
+  </div>
+
+  <form class="form-inline mb-4">
+    <button id="connect" class="btn btn-primary" type="button">Connect</button>
+    <button id="disconnect" class="btn btn-danger" disabled="disabled" type="button">Disconnect
+    </button>
+  </form>
+
+  <div id="messages"></div>
+
+  <form class="form-inline mt-4">
+    <input type="text" id="message" class="form-control" placeholder="Type a message...">
+    <button id="send" class="btn btn-success" type="button">Send</button>
+  </form>
 </div>
 </body>
 </html>

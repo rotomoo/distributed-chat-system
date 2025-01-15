@@ -7,7 +7,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 public class SecurityUtil {
 
-    public static String getLoginId() {
+    public static Long getLoginId() {
         Authentication authentication = SecurityContextHolder.getContext()
             .getAuthentication();
 
@@ -16,6 +16,6 @@ public class SecurityUtil {
             throw new ApiException(ErrorCode.NOT_EXIST_ACCOUNT);
         }
 
-        return authentication.getName();
+        return Long.parseLong(authentication.getName());
     }
 }

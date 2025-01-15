@@ -26,7 +26,7 @@ public class CustomUserDetailsService implements UserDetailsService {
         User user = userRepository.findByAccount(username)
             .orElseThrow(() -> new ApiException(ErrorCode.NOT_EXIST_ACCOUNT));
 
-        return new org.springframework.security.core.userdetails.User(user.getAccount(),
+        return new org.springframework.security.core.userdetails.User(String.valueOf(user.getId()),
             user.getPassword(), List.of());
     }
 }
