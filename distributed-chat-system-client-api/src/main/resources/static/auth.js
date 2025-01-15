@@ -71,6 +71,7 @@ document.getElementById('login-form').addEventListener('submit',
         if (response.ok) {
           messageElement.style.color = 'green';
           messageElement.textContent = `로그인 성공!`;
+          window.location.reload();
         } else {
           const error = await response.json();
           messageElement.style.color = 'red';

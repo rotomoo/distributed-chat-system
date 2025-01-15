@@ -7,5 +7,5 @@ import org.springframework.web.bind.annotation.GetMapping;
 public interface ServiceDiscoveryClient {
 
     @GetMapping(value = "/chat-server")
-    String getChatServiceUri();
+    String getChatServiceUrl();
 }

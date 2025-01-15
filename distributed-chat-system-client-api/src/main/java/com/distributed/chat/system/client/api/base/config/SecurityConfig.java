@@ -2,7 +2,9 @@ package com.distributed.chat.system.client.api.base.config;
 
 import com.distributed.chat.system.client.api.base.filter.CustomOncePerRequestFilter;
 import com.distributed.chat.system.client.api.base.security.CustomAuthenticationSuccessHandler;
+import com.distributed.chat.system.client.api.base.security.CustomSimpleUrlAuthenticationFailureHandler;
 import com.distributed.chat.system.client.api.base.security.CustomUserDetailsService;
+import com.distributed.chat.system.client.api.web.controller.feign.ServiceDiscoveryClient;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -15,7 +17,6 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
@@ -24,6 +25,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final CustomUserDetailsService customUserDetailsService;
+    private final ServiceDiscoveryClient serviceDiscoveryClient;
 
     private final String[] publicPaths = List.of(
         "/v1/public/**",
@@ -61,12 +63,12 @@ public class SecurityConfig {
             .formLogin((config) ->
                 config.loginProcessingUrl("/login")
                     .usernameParameter("account")
-                    .successHandler(new CustomAuthenticationSuccessHandler())
-                    .failureHandler(new SimpleUrlAuthenticationFailureHandler())
+                    .successHandler(new CustomAuthenticationSuccessHandler(serviceDiscoveryClient))
+                    .failureHandler(new CustomSimpleUrlAuthenticationFailureHandler())
                     .permitAll()
             )
             .sessionManagement((config) ->
-                config.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                config.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
             )
             .userDetailsService(customUserDetailsService)
             .addFilterBefore(new CustomOncePerRequestFilter(),
