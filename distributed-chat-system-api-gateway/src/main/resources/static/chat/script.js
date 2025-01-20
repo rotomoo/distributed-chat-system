@@ -1,3 +1,20 @@
+$(function () {
+  // 페이지 로드 시 세션 쿠키 확인
+  const cookies = document.cookie.split(';');
+  const sessionCookie = cookies.find(
+      cookie => cookie.trim().startsWith('SESSION='));
+
+  if (!sessionCookie) {
+    // 세션 쿠키가 없으면 이동
+    window.location.href = '/';
+  }
+
+  // WebSocket 연결 관련 설정
+  $("#connect").click(() => connect());
+  $("#disconnect").click(() => disconnect());
+  $("#send").click(() => sendMessage());
+});
+
 let script;
 
 function onOpen() {
@@ -14,7 +31,7 @@ function onClose() {
 }
 
 function connect() {
-  script = new WebSocket("ws://localhost:7777/ws/chats");
+  script = new WebSocket("ws://localhost:8080/ws/chats");
   script.onmessage = onMessage;
   script.onopen = onOpen;
   script.onclose = onClose;
@@ -56,9 +73,3 @@ function setConnected(connected) {
   document.getElementById("disconnect").disabled = !connected;
   document.getElementById("messages").innerHTML = "";
 }
-
-$(function () {
-  $("#connect").click(() => connect());
-  $("#disconnect").click(() => disconnect());
-  $("#send").click(() => sendMessage());
-});

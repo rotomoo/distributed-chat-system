@@ -1,7 +1,5 @@
 package com.distributed.chat.system.client.api.base.security;
 
-import com.distributed.chat.system.common.exception.ApiException;
-import com.distributed.chat.system.common.exception.ErrorCode;
 import com.distributed.chat.system.mysql.entity.User;
 import com.distributed.chat.system.mysql.repository.UserRepository;
 import java.util.List;
@@ -24,7 +22,7 @@ public class CustomUserDetailsService implements UserDetailsService {
         log.info("CustomUserDetailsService - loadUserByUsername method in");
 
         User user = userRepository.findByAccount(username)
-            .orElseThrow(() -> new ApiException(ErrorCode.NOT_EXIST_ACCOUNT));
+            .orElseThrow(() -> new UsernameNotFoundException("없는 계정입니다."));
 
         return new org.springframework.security.core.userdetails.User(String.valueOf(user.getId()),
             user.getPassword(), List.of());

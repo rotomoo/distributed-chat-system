@@ -60,7 +60,7 @@ document.getElementById('login-form').addEventListener('submit',
       const messageElement = document.getElementById('login-message');
 
       try {
-        const response = await fetch('/login', {
+        const response = await fetch('/v1/public/api/auth/login', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -75,7 +75,8 @@ document.getElementById('login-form').addEventListener('submit',
         } else {
           const error = await response.json();
           messageElement.style.color = 'red';
-          messageElement.textContent = `에러: ${error.msg || '로그인에 실패했습니다.'}`;
+          messageElement.textContent = `에러: ${error.msg
+          || '로그인에 실패했습니다. 아이디 비밀번호를 확인해주세요.'}`;
         }
       } catch (error) {
         console.error('Error:', error);

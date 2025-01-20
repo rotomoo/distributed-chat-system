@@ -4,13 +4,22 @@ spring:
       on-profile: default
 
   application:
-    name: client-api
+    name: api-gateway
 
-  session:
-    store-type: redis
-    redis:
-      namespace: distributed-chat-system
-    timeout: 43200m # 세션 만료 기한: 30일 = 43200m
+  main:
+    web-application-type: reactive
+
+  cloud:
+    gateway:
+      routes:
+        - id: client-api
+          uri: lb://CLIENT-API
+          predicates:
+            - Path=/v1/**
+        - id: chatting
+          uri: lb://CHATTING
+          predicates:
+            - Path=/ws/**
 
 eureka:
   client:

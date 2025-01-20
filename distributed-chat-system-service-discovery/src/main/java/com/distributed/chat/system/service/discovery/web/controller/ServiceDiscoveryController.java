@@ -12,9 +12,9 @@ public class ServiceDiscoveryController {
 
     private final LoadBalancerClient loadBalancerClient;
 
-    @GetMapping("/chat-server")
-    public String getChatServiceInstance() {
-        ServiceInstance serviceInstance = loadBalancerClient.choose("chat-server");
+    @GetMapping("/chatting-service")
+    public String getChattingServiceInstance() {
+        ServiceInstance serviceInstance = loadBalancerClient.choose("chatting");
         return serviceInstance != null ? serviceInstance.getUri().toString() : null;
     }
 }
