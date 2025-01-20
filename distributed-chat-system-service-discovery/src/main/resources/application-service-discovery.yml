@@ -3,6 +3,9 @@ spring:
     activate:
       on-profile: default
 
+  application:
+    name: service-discovery
+
 eureka:
   client:
     register-with-eureka: true

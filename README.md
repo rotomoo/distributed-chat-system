@@ -27,18 +27,20 @@
 
 ## 모듈 계층
 
-- **distributed-chat-system**
-    - 📂 **common**
+- distributed-chat-system
+    - 📂 common
         - 📁 distributed-chat-system-common
-    - 📂 **infra**
+    - 📂 infra
         - 📁 distributed-chat-kafka-consumer
         - 📁 distributed-chat-kafka-producer
         - 📁 distributed-chat-system-mongodb
         - 📁 distributed-chat-system-mysql
+    - 📁 distributed-chat-system-api-gateway
     - 📁 distributed-chat-system-chatting
     - 📁 distributed-chat-system-client-api
     - 📁 distributed-chat-system-connection-status
     - 📁 distributed-chat-system-notification
+    - 📁 distributed-chat-system-service-discovery
 
 ```
 distributed-chat-system
@@ -154,25 +156,25 @@ distributed-chat-system
 
 ## 기능 목록
 
-**client-api service**
-
-- 회원가입
-- 로그인
-
-<br>
-
 **chatting service**
 
 - 메시지 전송
 - 메시지 수신
+
+<br>
+
+**client-api service**
+
+- 회원가입
+- 로그인
 - 팀 목록 조회
 - 멘션 회원 목록 조회
 
 <br>
 
-
 **connection-status service**
 
+- 팀 사용자 접속상태 박동(heartbeat) 검사
 - 팀 사용자 접속상태 목록 조회
 
 <br>
@@ -186,8 +188,17 @@ distributed-chat-system
 **service-discovery service**
 
 - client-side discovery (spring-cloud-eureka)
-    - chatting service
-      loadbalancer [(spring-cloud-loadbalancer, round-robin)](https://docs.spring.io/spring-cloud-commons/reference/spring-cloud-commons/loadbalancer.html)
+    - 가용 서비스 정보 저장
+    - 채팅 서비스
+      로드밸런서 [(spring-cloud-loadbalancer, round-robin)](https://docs.spring.io/spring-cloud-commons/reference/spring-cloud-commons/loadbalancer.html)
+
+<br>
+
+**api-gateway service**
+
+- 가용 서비스 라우팅 (spring-cloud-gateway)
+
+<br>
 
 ## DB 설계
 
@@ -219,13 +230,14 @@ distributed-chat-system
 **무상태 서비스 (Stateless Services)**
 
 - client-api service
+- notification service
 - service-discovery service
+- api-gateway service
 
 **상태 유지 서비스 (Stateful Services)**
 
 - chatting service
 - connection-status service
-- notification service
 
 **세션 관리**
 
