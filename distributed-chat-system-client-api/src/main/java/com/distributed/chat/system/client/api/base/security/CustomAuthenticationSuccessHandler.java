@@ -1,6 +1,5 @@
 package com.distributed.chat.system.client.api.base.security;
 
-import com.distributed.chat.system.client.api.web.controller.feign.ServiceDiscoveryClient;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -15,8 +14,6 @@ import org.springframework.security.web.authentication.AuthenticationSuccessHand
 @RequiredArgsConstructor
 public class CustomAuthenticationSuccessHandler implements AuthenticationSuccessHandler {
 
-    private final ServiceDiscoveryClient serviceDiscoveryClient;
-
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
         Authentication authentication) throws IOException, ServletException {
@@ -25,11 +22,5 @@ public class CustomAuthenticationSuccessHandler implements AuthenticationSuccess
 
         HttpSession session = request.getSession(false);
         session.setAttribute("authentication", authentication);
-
-        String chatServiceUrl = serviceDiscoveryClient.getChatServiceUrl();
-        log.info("login success handler chatServerUrl: {}, authentication : {}", chatServiceUrl,
-            authentication);
-
-        session.setAttribute("chatServiceUrl", chatServiceUrl);
     }
 }

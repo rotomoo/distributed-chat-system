@@ -24,13 +24,6 @@ public class CustomOncePerRequestFilter extends OncePerRequestFilter {
         if (session != null) {
             Authentication authentication = (Authentication) session.getAttribute("authentication");
             SecurityContextHolder.getContext().setAuthentication(authentication);
-
-            String chatServiceUrl = (String) session.getAttribute("chatServiceUrl");
-
-            if (request.getRequestURI().equals("/") && chatServiceUrl != null) {
-                response.sendRedirect(chatServiceUrl);
-                return;
-            }
         }
 
         filterChain.doFilter(request, response);

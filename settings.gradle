@@ -22,3 +22,5 @@ include 'distributed-chat-system-connection-status'
 include 'distributed-chat-system-notification'
 
 include 'distributed-chat-system-service-discovery'
+
+include 'distributed-chat-system-api-gateway'

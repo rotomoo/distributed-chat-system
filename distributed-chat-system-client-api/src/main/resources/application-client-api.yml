@@ -3,14 +3,23 @@ spring:
     activate:
       on-profile: default
 
+  application:
+    name: client-api
+
   session:
     store-type: redis
     redis:
       namespace: distributed-chat-system
     timeout: 43200m # 세션 만료 기한: 30일 = 43200m
 
-service-discovery:
-  url: http://localhost:7710/
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:7710/eureka/
+
+  instance:
+#    lease-renewal-interval-in-seconds: 5 # 하트비트가 수신되지 않으면 서비스 등록 해제 (default: 30s)
+#    lease-expiration-duration-in-seconds: 15 # 하트비트가 수신되지 않으면 서비스 등록 해제 (default: 90s)
 
 ---
 

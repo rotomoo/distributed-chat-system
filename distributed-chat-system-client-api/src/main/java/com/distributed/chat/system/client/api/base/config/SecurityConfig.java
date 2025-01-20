@@ -4,7 +4,6 @@ import com.distributed.chat.system.client.api.base.filter.CustomOncePerRequestFi
 import com.distributed.chat.system.client.api.base.security.CustomAuthenticationSuccessHandler;
 import com.distributed.chat.system.client.api.base.security.CustomSimpleUrlAuthenticationFailureHandler;
 import com.distributed.chat.system.client.api.base.security.CustomUserDetailsService;
-import com.distributed.chat.system.client.api.web.controller.feign.ServiceDiscoveryClient;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -25,7 +24,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final CustomUserDetailsService customUserDetailsService;
-    private final ServiceDiscoveryClient serviceDiscoveryClient;
 
     private final String[] publicPaths = List.of(
         "/v1/public/**",
@@ -61,9 +59,10 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
             )
             .formLogin((config) ->
-                config.loginProcessingUrl("/login")
+                config
+                    .loginProcessingUrl("/v1/public/api/auth/login")
                     .usernameParameter("account")
-                    .successHandler(new CustomAuthenticationSuccessHandler(serviceDiscoveryClient))
+                    .successHandler(new CustomAuthenticationSuccessHandler())
                     .failureHandler(new CustomSimpleUrlAuthenticationFailureHandler())
                     .permitAll()
             )
