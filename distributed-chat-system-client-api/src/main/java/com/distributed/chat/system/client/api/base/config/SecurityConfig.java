@@ -6,6 +6,7 @@ import com.distributed.chat.system.client.api.base.security.CustomSimpleUrlAuthe
 import com.distributed.chat.system.client.api.base.security.CustomUserDetailsService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -24,6 +25,9 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final CustomUserDetailsService customUserDetailsService;
+
+    @Value("${front-end.url}")
+    private String frontEndUrl;
 
     private final String[] publicPaths = List.of(
         "/v1/public/**",
@@ -60,6 +64,7 @@ public class SecurityConfig {
             )
             .formLogin((config) ->
                 config
+                    .loginPage(frontEndUrl)
                     .loginProcessingUrl("/v1/public/api/auth/login")
                     .usernameParameter("account")
                     .successHandler(new CustomAuthenticationSuccessHandler())
