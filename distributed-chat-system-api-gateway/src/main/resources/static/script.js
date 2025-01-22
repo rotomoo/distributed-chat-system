@@ -1,3 +1,33 @@
+// 내 정보 조회 후 채팅 페이지 이동
+document.addEventListener('DOMContentLoaded', () => {
+  checkMyInfoAndRedirect();
+});
+
+async function checkMyInfoAndRedirect() {
+  try {
+    const response = await fetch('/v1/private/api/user/my-info', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.code === 0) {
+        // code가 0인 경우 /chat/index.html로 이동
+        window.location.href = '/chat/index.html';
+      } else {
+        console.log(`Error: ${data.msg || '내 정보 조회 실패'}`);
+      }
+    } else {
+      console.error('Failed to fetch my info:', response.statusText);
+    }
+  } catch (error) {
+    console.error('Error while fetching my info:', error);
+  }
+}
+
 // Tab switching
 const signupTab = document.getElementById('signup-tab');
 const loginTab = document.getElementById('login-tab');

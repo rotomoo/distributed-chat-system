@@ -77,7 +77,7 @@ public class SecurityConfig {
             )
             .logout((config) ->
                 config
-                    .logoutUrl("/v1/public/api/auth/logout")
+                    .logoutUrl("/v1/private/api/user/logout")
                     .logoutSuccessUrl(frontEndUrl)
                     .invalidateHttpSession(true)
             )

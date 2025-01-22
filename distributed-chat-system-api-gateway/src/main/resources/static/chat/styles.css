@@ -22,11 +22,11 @@ body {
 .header h1 {
   font-size: 24px;
   color: #343a40;
+  display: inline-block;
 }
 
-#conversation {
-  border: none;
-  margin-top: 20px;
+#logout {
+  float: right;
 }
 
 #messages {
