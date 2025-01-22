@@ -20,6 +20,8 @@ spring:
           uri: lb://CHATTING
           predicates:
             - Path=/ws/**
+          filters:
+            - name: ChattingRoutingFilter
 
 eureka:
   client:

@@ -1,7 +1,7 @@
 package com.distributed.chat.system.client.api.web.service;
 
 import com.distributed.chat.system.client.api.base.security.SecurityUtil;
-import com.distributed.chat.system.client.api.web.dto.authentication.GetMyInfoResponseDto;
+import com.distributed.chat.system.client.api.web.dto.user.GetMyInfoResponseDto;
 import com.distributed.chat.system.common.exception.ApiException;
 import com.distributed.chat.system.common.exception.ErrorCode;
 import com.distributed.chat.system.common.response.ResponseData;

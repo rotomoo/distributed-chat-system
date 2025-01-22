@@ -1,4 +1,4 @@
-package com.distributed.chat.system.client.api.web.dto.authentication;
+package com.distributed.chat.system.client.api.web.dto.user;
 
 import com.distributed.chat.system.mysql.entity.User;
 import lombok.Getter;
