@@ -14,6 +14,8 @@ import org.springframework.security.web.authentication.AuthenticationSuccessHand
 @RequiredArgsConstructor
 public class CustomAuthenticationSuccessHandler implements AuthenticationSuccessHandler {
 
+    private final int loginSuccessSessionTimeout;
+
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
         Authentication authentication) throws IOException, ServletException {
@@ -21,6 +23,7 @@ public class CustomAuthenticationSuccessHandler implements AuthenticationSuccess
         log.info("login success handler in");
 
         HttpSession session = request.getSession(false);
+        session.setMaxInactiveInterval(loginSuccessSessionTimeout);
         session.setAttribute("authentication", authentication);
     }
 }

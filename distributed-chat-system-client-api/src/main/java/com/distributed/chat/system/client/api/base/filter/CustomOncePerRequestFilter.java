@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -22,8 +23,8 @@ public class CustomOncePerRequestFilter extends OncePerRequestFilter {
         HttpSession session = request.getSession(false);
 
         if (session != null) {
-            Authentication authentication = (Authentication) session.getAttribute("authentication");
-            SecurityContextHolder.getContext().setAuthentication(authentication);
+            Optional.ofNullable((Authentication) session.getAttribute("authentication"))
+                .ifPresent(SecurityContextHolder.getContext()::setAuthentication);
         }
 
         filterChain.doFilter(request, response);

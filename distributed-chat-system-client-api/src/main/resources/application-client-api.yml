@@ -10,7 +10,7 @@ spring:
     store-type: redis
     redis:
       namespace: distributed-chat-system
-    timeout: 43200m # 세션 만료 기한: 30일 = 43200m
+    timeout: 15m # default 세션 만료 기한 15분
 
 eureka:
   client:
@@ -21,8 +21,13 @@ eureka:
 #    lease-renewal-interval-in-seconds: 5 # 하트비트가 수신되지 않으면 서비스 등록 해제 (default: 30s)
 #    lease-expiration-duration-in-seconds: 15 # 하트비트가 수신되지 않으면 서비스 등록 해제 (default: 90s)
 
+# custom
 front-end:
   url: http://localhost:8080
+
+login-success:
+  session:
+    timeout: 2592000 # 로그인시 세션 만료 기한: 30일 = 30(d) * 24(h) * 60(m) * 60(s)
 
 ---
 
