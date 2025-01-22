@@ -3,7 +3,6 @@ package com.distributed.chat.system.chatting.base.config;
 import com.distributed.chat.system.chatting.base.filter.CustomOncePerRequestFilter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -18,9 +17,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @RequiredArgsConstructor
 @Slf4j
 public class SecurityConfig {
-
-    @Value("${client-api.url}")
-    private String clientApiUrl;
 
     @Bean
     public WebSecurityCustomizer webSecurityCustomizer() {
@@ -45,16 +41,11 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
             )
             .formLogin(AbstractHttpConfigurer::disable)
-            .logout((config) ->
-                config.logoutUrl("/logout").
-                    logoutSuccessUrl(clientApiUrl)
-                    .invalidateHttpSession(true)
-            )
             .sessionManagement((config) ->
                 config
                     .sessionFixation().migrateSession()
             )
-            .addFilterBefore(new CustomOncePerRequestFilter(clientApiUrl),
+            .addFilterBefore(new CustomOncePerRequestFilter(),
                 UsernamePasswordAuthenticationFilter.class)
             .build();
     }

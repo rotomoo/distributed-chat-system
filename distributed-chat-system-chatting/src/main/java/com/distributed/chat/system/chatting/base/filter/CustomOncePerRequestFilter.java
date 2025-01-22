@@ -16,19 +16,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @RequiredArgsConstructor
 public class CustomOncePerRequestFilter extends OncePerRequestFilter {
 
-    private final String clientApiUrl;
-
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
         FilterChain filterChain) throws ServletException, IOException {
         log.info("CustomOncePerRequestFilter - doFilterInternal method in");
 
         HttpSession session = request.getSession(false);
-
-        if (session == null) {
-            response.sendRedirect(clientApiUrl);
-            return;
-        }
 
         Authentication authentication = (Authentication) session.getAttribute("authentication");
         SecurityContextHolder.getContext().setAuthentication(authentication);

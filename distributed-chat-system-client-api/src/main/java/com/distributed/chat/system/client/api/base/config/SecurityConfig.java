@@ -71,6 +71,12 @@ public class SecurityConfig {
                     .failureHandler(new CustomSimpleUrlAuthenticationFailureHandler())
                     .permitAll()
             )
+            .logout((config) ->
+                config
+                    .logoutUrl("/v1/public/api/auth/logout")
+                    .logoutSuccessUrl(frontEndUrl)
+                    .invalidateHttpSession(true)
+            )
             .sessionManagement((config) ->
                 config.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
             )
