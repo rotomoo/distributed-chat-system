@@ -21,8 +21,7 @@ public class UserService {
     private final UserRepository userRepository;
 
     private final RedisTemplate redisTemplate;
-
-
+    
     /**
      * 내 정보 조회
      *

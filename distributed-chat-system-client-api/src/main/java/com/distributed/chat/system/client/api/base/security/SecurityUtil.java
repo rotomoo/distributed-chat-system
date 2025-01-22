@@ -13,7 +13,7 @@ public class SecurityUtil {
 
         if (authentication == null || !authentication.isAuthenticated()
             || authentication.getPrincipal().equals("anonymousUser")) {
-            throw new ApiException(ErrorCode.NOT_EXIST_ACCOUNT);
+            throw new ApiException(ErrorCode.NOT_EXIST_USER_INFO);
         }
 
         return Long.parseLong(authentication.getName());
