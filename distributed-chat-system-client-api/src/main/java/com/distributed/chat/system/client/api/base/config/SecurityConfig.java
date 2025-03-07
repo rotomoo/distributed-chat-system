@@ -29,6 +29,9 @@ public class SecurityConfig {
     @Value("${front-end.url}")
     private String frontEndUrl;
 
+    @Value("${login-success.session.timeout}")
+    private int loginSuccessSessionTimeout;
+
     private final String[] publicPaths = List.of(
         "/v1/public/**",
         "/"
@@ -67,9 +70,16 @@ public class SecurityConfig {
                     .loginPage(frontEndUrl)
                     .loginProcessingUrl("/v1/public/api/auth/login")
                     .usernameParameter("account")
-                    .successHandler(new CustomAuthenticationSuccessHandler())
+                    .successHandler(
+                        new CustomAuthenticationSuccessHandler(loginSuccessSessionTimeout))
                     .failureHandler(new CustomSimpleUrlAuthenticationFailureHandler())
                     .permitAll()
+            )
+            .logout((config) ->
+                config
+                    .logoutUrl("/v1/private/api/user/logout")
+                    .logoutSuccessUrl(frontEndUrl)
+                    .invalidateHttpSession(true)
             )
             .sessionManagement((config) ->
                 config.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)

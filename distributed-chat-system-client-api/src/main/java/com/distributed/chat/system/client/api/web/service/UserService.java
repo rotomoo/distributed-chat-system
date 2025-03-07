@@ -1,7 +1,7 @@
 package com.distributed.chat.system.client.api.web.service;
 
 import com.distributed.chat.system.client.api.base.security.SecurityUtil;
-import com.distributed.chat.system.client.api.web.dto.authentication.GetMyInfoResponseDto;
+import com.distributed.chat.system.client.api.web.dto.user.GetMyInfoResponseDto;
 import com.distributed.chat.system.common.exception.ApiException;
 import com.distributed.chat.system.common.exception.ErrorCode;
 import com.distributed.chat.system.common.response.ResponseData;
@@ -22,7 +22,6 @@ public class UserService {
 
     private final RedisTemplate redisTemplate;
 
-
     /**
      * 내 정보 조회
      *
@@ -38,8 +37,8 @@ public class UserService {
         }
 
         User user = foundUser.get();
-        String chatServerIp = (String) redisTemplate.opsForValue().get(String.valueOf(loginId));
+        String chatServerUrl = (String) redisTemplate.opsForValue().get(String.valueOf(loginId));
 
-        return ResponseData.success("내 정보 조회", new GetMyInfoResponseDto(user, chatServerIp));
+        return ResponseData.success("내 정보 조회", new GetMyInfoResponseDto(user, chatServerUrl));
     }
 }

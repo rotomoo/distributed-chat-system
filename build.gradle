@@ -68,6 +68,6 @@ subprojects {
 
     test {
         useJUnitPlatform()
-        systemProperty 'jasypt.encryptor.password', System.getenv("jasypt_encryptor_password")
+        systemProperty 'jasypt.encryptor.password', System.getenv("JASYPT_ENCRYPTOR_PASSWORD")
     }
 }
