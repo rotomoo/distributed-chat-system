@@ -21,7 +21,7 @@ public class UserService {
     private final UserRepository userRepository;
 
     private final RedisTemplate redisTemplate;
-    
+
     /**
      * 내 정보 조회
      *
@@ -37,8 +37,8 @@ public class UserService {
         }
 
         User user = foundUser.get();
-        String chatServerIp = (String) redisTemplate.opsForValue().get(String.valueOf(loginId));
+        String chatServerUrl = (String) redisTemplate.opsForValue().get(String.valueOf(loginId));
 
-        return ResponseData.success("내 정보 조회", new GetMyInfoResponseDto(user, chatServerIp));
+        return ResponseData.success("내 정보 조회", new GetMyInfoResponseDto(user, chatServerUrl));
     }
 }

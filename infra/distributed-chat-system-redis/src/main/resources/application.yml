@@ -1,0 +1,13 @@
+server:
+  port: 7660
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - redis
+
+  output:
+    ansi:
+      enabled: always

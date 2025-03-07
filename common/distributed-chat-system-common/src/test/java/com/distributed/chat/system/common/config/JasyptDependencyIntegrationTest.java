@@ -14,6 +14,7 @@ class JasyptDependencyIntegrationTest {
     @Test
     @DisplayName("true case: test 환경변수 주입 테스트")
     void testJasyptPassword() {
+
         // given
 
         // when

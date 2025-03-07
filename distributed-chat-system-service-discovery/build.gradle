@@ -1,9 +1,0 @@
-dependencies {
-    implementation project(':common:distributed-chat-system-common')
-
-    // eureka-server
-    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-server'
-
-    // loadbalancer
-    implementation 'org.springframework.cloud:spring-cloud-starter-loadbalancer'
-}

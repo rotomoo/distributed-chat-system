@@ -14,14 +14,14 @@ public class GetMyInfoResponseDto {
     private String userName;
     private String account;
     private Boolean deletedYn;
-    private String chatServerIp;
+    private String chatServerUrl;
 
     public GetMyInfoResponseDto(User user,
-        String chatServerIp) {
+        String chatServerUrl) {
         this.userId = user.getId();
         this.userName = user.getUserName();
         this.account = user.getAccount();
         this.deletedYn = user.getDeletedYn();
-        this.chatServerIp = chatServerIp;
+        this.chatServerUrl = chatServerUrl;
     }
 }

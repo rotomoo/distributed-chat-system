@@ -1,25 +1,8 @@
 # Distributed Chat System
 
-## 목차
-
-[사용법](#사용법)  
-[모듈 계층](#모듈-계층)  
-[아키텍처 설계](#아키텍처-설계)  
-[설계과정](#설계과정)  
-&nbsp;&nbsp;&nbsp;[기능 요구사항](#기능-요구사항)  
-&nbsp;&nbsp;&nbsp;[개략적 규모 추정](#개략적-규모-추정)  
-&nbsp;&nbsp;&nbsp;[기능 목록](#기능-목록)  
-&nbsp;&nbsp;&nbsp;[DB 설계](#DB-설계)  
-&nbsp;&nbsp;&nbsp;[채팅 메시지 흐름](#채팅-메시지-흐름)  
-&nbsp;&nbsp;&nbsp;[웹 계층](#웹-계층)  
-&nbsp;&nbsp;&nbsp;[캐시 계층](#캐시-계층)  
-&nbsp;&nbsp;&nbsp;[모니터링](#모니터링)
-
 ## 사용법
 
 ```markdown
-**If ports 2181, 8989 are in use, kill them.**
-
 1. docker-compose up --build
 
 2. visit localhost:8080
@@ -31,16 +14,17 @@
     - 📂 common
         - 📁 distributed-chat-system-common
     - 📂 infra
+        - 📁 distributed-chat-system-api-gateway
         - 📁 distributed-chat-kafka-consumer
         - 📁 distributed-chat-kafka-producer
         - 📁 distributed-chat-system-mongodb
         - 📁 distributed-chat-system-mysql
-    - 📁 distributed-chat-system-api-gateway
+        - 📁 distributed-chat-system-redis
+        - 📁 distributed-chat-system-service-discovery
     - 📁 distributed-chat-system-chatting
     - 📁 distributed-chat-system-client-api
     - 📁 distributed-chat-system-connection-status
     - 📁 distributed-chat-system-notification
-    - 📁 distributed-chat-system-service-discovery
 
 ```
 distributed-chat-system
@@ -118,6 +102,11 @@ distributed-chat-system
       ]
     }
     ```
+  <br>
+- Redis
+
+  Shared Session Store - Redis 기반 세션 중앙화
+
 
 - S3
 
@@ -185,7 +174,7 @@ distributed-chat-system
 
 <br>
 
-**service-discovery service**
+**(infra) service-discovery service**
 
 - client-side discovery (spring-cloud-eureka)
     - 가용 서비스 정보 저장
@@ -194,7 +183,7 @@ distributed-chat-system
 
 <br>
 
-**api-gateway service**
+**(infra) api-gateway service**
 
 - 가용 서비스 라우팅 (spring-cloud-gateway)
 
@@ -223,6 +212,11 @@ distributed-chat-system
 ## 채팅 메시지 흐름
 
 **Client-Server 양방향 통신 [Web Socket 프로토콜](https://rotomoo.tistory.com/100)**
+
+<br>
+
+## 세션 관리
+
 <br>
 
 ## 웹 계층
@@ -231,17 +225,11 @@ distributed-chat-system
 
 - client-api service
 - notification service
-- service-discovery service
-- api-gateway service
 
 **상태 유지 서비스 (Stateful Services)**
 
 - chatting service
 - connection-status service
-
-**세션 관리**
-
-- Shared Session Store - Redis 기반 세션 중앙화
 
 <br>
 

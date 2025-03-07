@@ -1,6 +1,7 @@
 package com.distributed.chat.system.client.api.base.security;
 
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -25,5 +26,16 @@ public class CustomAuthenticationSuccessHandler implements AuthenticationSuccess
         HttpSession session = request.getSession(false);
         session.setMaxInactiveInterval(loginSuccessSessionTimeout);
         session.setAttribute("authentication", authentication);
+
+        String userId = authentication.getName();
+        session.setAttribute("userId", userId);
+
+        // 로그인시 userId 쿠키 생성
+        Cookie cookie = new Cookie("userId", authentication.getName());
+        cookie.setPath("/");
+        cookie.setHttpOnly(true);
+        cookie.setSecure(false);
+        cookie.setMaxAge(loginSuccessSessionTimeout);
+        response.addCookie(cookie);
     }
 }

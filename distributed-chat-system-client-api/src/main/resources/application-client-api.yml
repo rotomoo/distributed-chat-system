@@ -6,12 +6,6 @@ spring:
   application:
     name: client-api
 
-  session:
-    store-type: redis
-    redis:
-      namespace: distributed-chat-system
-    timeout: 15m # default 세션 만료 기한 15분
-
 eureka:
   client:
     service-url:
