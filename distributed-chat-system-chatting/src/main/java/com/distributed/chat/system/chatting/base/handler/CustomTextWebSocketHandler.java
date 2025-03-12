@@ -44,9 +44,10 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
             .entries(sessionNamespace + ":sessions:" + sessionId);
         String userId = (String) sessionData.get("sessionAttr:userId");
 
-        String chatServerUri = "ws://" + serverIp + ":" + session.getLocalAddress().getPort() + "/websocket";
+        String chatServerUri = serverIp + ":" + session.getLocalAddress().getPort();
 
-        redisTemplate.opsForValue().set(userId, chatServerUri);
+        redisTemplate.opsForValue().set(userId, "ws://" + chatServerUri);
+        redisTemplate.opsForSet().add("chatServerUri:" + chatServerUri, userId);
 
         this.webSocketSessionMap.put(session.getId(), session);
     }

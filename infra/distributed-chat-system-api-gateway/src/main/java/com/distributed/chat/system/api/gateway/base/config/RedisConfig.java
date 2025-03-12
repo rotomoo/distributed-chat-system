@@ -1,4 +1,4 @@
-package com.distributed.chat.system.service.discovery.base.config;
+package com.distributed.chat.system.api.gateway.base.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.annotation.Bean;
