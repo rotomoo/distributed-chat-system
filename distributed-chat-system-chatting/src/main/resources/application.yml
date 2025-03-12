@@ -1,0 +1,14 @@
+server:
+  port: 0 # random
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - chatting
+      - redis
+
+  output:
+    ansi:
+      enabled: always

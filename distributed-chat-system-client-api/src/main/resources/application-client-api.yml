@@ -1,0 +1,45 @@
+spring:
+  config:
+    activate:
+      on-profile: default
+
+  application:
+    name: client-api
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:7710/eureka/
+
+  instance:
+#    lease-renewal-interval-in-seconds: 5 # 하트비트가 수신되지 않으면 서비스 등록 해제 (default: 30s)
+#    lease-expiration-duration-in-seconds: 15 # 하트비트가 수신되지 않으면 서비스 등록 해제 (default: 90s)
+
+# custom
+front-end:
+  url: http://localhost:8080
+
+login-success:
+  session:
+    timeout: 2592000 # 로그인시 세션 만료 기한: 30일 = 30(d) * 24(h) * 60(m) * 60(s)
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: stage
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: prod

@@ -1,0 +1,14 @@
+dependencies {
+    implementation project(':common:distributed-chat-system-common')
+
+    // kafka
+    implementation('org.springframework.cloud:spring-cloud-starter-stream-kafka')
+}
+
+bootJar {
+    enabled = false
+}
+
+jar {
+    enabled = true
+}

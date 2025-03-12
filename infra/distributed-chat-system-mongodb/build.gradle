@@ -1,0 +1,14 @@
+dependencies {
+    implementation project(':common:distributed-chat-system-common')
+
+    // mongodb
+    implementation('org.springframework.boot:spring-boot-starter-data-mongodb')
+}
+
+bootJar {
+    enabled = false
+}
+
+jar {
+    enabled = true
+}

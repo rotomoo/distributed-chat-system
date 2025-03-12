@@ -1,0 +1,13 @@
+server:
+  port: 7620
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - kafka-consumer
+
+  output:
+    ansi:
+      enabled: always

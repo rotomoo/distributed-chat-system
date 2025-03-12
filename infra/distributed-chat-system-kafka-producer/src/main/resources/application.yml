@@ -1,0 +1,13 @@
+server:
+  port: 7630
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - kafka-producer
+
+  output:
+    ansi:
+      enabled: always

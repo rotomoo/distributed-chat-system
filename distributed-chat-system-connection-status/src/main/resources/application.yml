@@ -1,0 +1,13 @@
+server:
+  port: 7680
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - connection-status
+
+  output:
+    ansi:
+      enabled: always

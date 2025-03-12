@@ -1,0 +1,13 @@
+dependencies {
+    implementation project(':common:distributed-chat-system-common')
+
+    // eureka-client
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+
+    // gateway
+    implementation 'org.springframework.cloud:spring-cloud-starter-gateway'
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+    // redis
+    implementation('org.springframework.boot:spring-boot-starter-data-redis')
+}

@@ -1,0 +1,17 @@
+dependencies {
+    implementation project(':common:distributed-chat-system-common')
+    implementation project(':infra:distributed-chat-system-redis')
+
+    // webSocket
+    implementation('org.springframework.boot:spring-boot-starter-websocket')
+
+    // security
+    implementation('org.springframework.boot:spring-boot-starter-security')
+    testImplementation('org.springframework.security:spring-security-test')
+
+    // redis
+    compileOnly('org.springframework.boot:spring-boot-starter-data-redis')
+
+    // eureka-client
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+}

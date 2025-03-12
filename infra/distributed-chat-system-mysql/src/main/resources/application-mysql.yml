@@ -1,0 +1,40 @@
+spring:
+  config:
+    activate:
+      on-profile: default
+
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/chat?serverTimezone=Asia/Seoul
+    username: ENC(fPnE1INI6bcoYInD+rxQgA==)
+    password: ENC(bFjCmcg6n22XW96Wcj661NHrk5027tcL)
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        auto_quote_keyword: true
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: stage
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: prod

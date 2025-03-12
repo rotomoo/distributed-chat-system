@@ -1,0 +1,31 @@
+spring:
+  config:
+    activate:
+      on-profile: default
+
+  session:
+    store-type: redis
+    redis:
+      namespace: distributed-chat-system
+    timeout: 15m # default 세션 만료 기한 15분
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: stage
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: prod
