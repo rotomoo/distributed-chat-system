@@ -20,8 +20,8 @@ spring:
           uri: lb:ws://CHATTING
           predicates:
             - Path=/websocket/**
-#          filters:
-#            - name: ChattingRoutingFilter
+          filters:
+            - name: ChattingRoutingFilter
 
 eureka:
   client:

@@ -2,11 +2,12 @@ package com.distributed.chat.system.api.gateway.base.filter;
 
 import com.distributed.chat.system.common.exception.ApiException;
 import com.distributed.chat.system.common.exception.ErrorCode;
-import java.net.URI;
 import java.util.Optional;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
+import org.springframework.cloud.gateway.route.Route;
 import org.springframework.cloud.gateway.support.ServerWebExchangeUtils;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpCookie;
@@ -17,54 +18,48 @@ import reactor.core.publisher.Mono;
 
 @Component
 @Slf4j
-public class ChattingRoutingFilter extends AbstractGatewayFilterFactory<ChattingRoutingFilter.Config> {
+@RequiredArgsConstructor
+public class ChattingRoutingFilter extends AbstractGatewayFilterFactory<Object> {
 
     private final RedisTemplate redisTemplate;
 
-    public ChattingRoutingFilter(RedisTemplate redisTemplate) {
-        super(Config.class);
-        this.redisTemplate = redisTemplate;
-    }
-
     @Override
-    public GatewayFilter apply(Config config) {
+    public GatewayFilter apply(Object object) {
         // Custom Pre Filter
         return (exchange, chain) -> {
             ServerHttpRequest request = exchange.getRequest();
             ServerHttpResponse response = exchange.getResponse();
+            Route prevRoute = (Route) exchange.getAttributes().get(ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR);
 
             log.info("Custom PRE filter : request id -> {}", request.getId());
-            log.info("PRE request URL: {}",
-                (Object) exchange.getAttribute(ServerWebExchangeUtils.GATEWAY_REQUEST_URL_ATTR));
-            log.info("PRE Host Header: {}",
-                (Object) exchange.getAttribute(ServerWebExchangeUtils.PRESERVE_HOST_HEADER_ATTRIBUTE));
+            log.info("PRE route URL: {}", prevRoute);
 
             String userId = Optional.ofNullable(request.getCookies().getFirst("userId"))
                 .map(HttpCookie::getValue)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_EXIST_USER_INFO));
 
             String chatServerUri = (String) Optional.ofNullable(
-                redisTemplate.opsForValue().get(userId)).orElse("lb:ws://CHATTING");
+                redisTemplate.opsForValue().get(userId)).orElse(null);
 
             log.info("userId : {}, chatServerUri : {}", userId, chatServerUri);
 
-            if (!chatServerUri.equals("lb:ws://CHATTING")) {
-                exchange.getAttributes().put(ServerWebExchangeUtils.GATEWAY_REQUEST_URL_ATTR, URI.create(chatServerUri));
+            if (chatServerUri != null) {
+                Route route = Route.async()
+                    .id(prevRoute.getId())
+                    .uri(chatServerUri)
+                    .order(prevRoute.getOrder())
+                    .asyncPredicate(prevRoute.getPredicate())
+                    .filters(prevRoute.getFilters())
+                    .build();
+
+                exchange.getAttributes().put(ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR, route);
             }
 
             // Custom Post Filter
             return chain.filter(exchange).then(Mono.fromRunnable(() -> {
                 log.info("Custom POST filter : response code -> {}", response.getStatusCode());
-                log.info("POST request URL: {}",
-                    (Object) exchange.getAttribute(ServerWebExchangeUtils.GATEWAY_REQUEST_URL_ATTR));
-                log.info("POST Host Header: {}",
-                    (Object) exchange.getAttribute(ServerWebExchangeUtils.PRESERVE_HOST_HEADER_ATTRIBUTE));
+                log.info("POST route URL: {}", (Route) exchange.getAttributes().get(ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR));
             }));
         };
-    }
-
-
-    public static class Config {
-
     }
 }

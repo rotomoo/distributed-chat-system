@@ -177,7 +177,7 @@ distributed-chat-system
 **(infra) service-discovery service**
 
 - client-side discovery (spring-cloud-eureka)
-    - 가용 서비스 정보 저장
+    - 가용 서비스 정보 동기화
     - 채팅 서비스
       로드밸런서 [(spring-cloud-loadbalancer, round-robin)](https://docs.spring.io/spring-cloud-commons/reference/spring-cloud-commons/loadbalancer.html)
 
@@ -186,6 +186,7 @@ distributed-chat-system
 **(infra) api-gateway service**
 
 - 가용 서비스 라우팅 (spring-cloud-gateway)
+    - 기존 접속 채팅 서버 우선 라우팅
 
 <br>
 
