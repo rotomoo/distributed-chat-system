@@ -35,6 +35,8 @@ distributed-chat-system
 
 ## 아키텍처 설계
 
+![architecture](./image/architecture.png)
+
 # 설계과정
 
 ## 기능 요구사항
@@ -145,14 +147,14 @@ distributed-chat-system
 
 ## 기능 목록
 
-**chatting service**
+**chatting server**
 
 - 메시지 전송
 - 메시지 수신
 
 <br>
 
-**client-api service**
+**client-api server**
 
 - 회원가입
 - 로그인
@@ -161,31 +163,31 @@ distributed-chat-system
 
 <br>
 
-**connection-status service**
+**connection-status server**
 
 - 팀 사용자 접속상태 박동(heartbeat) 검사
 - 팀 사용자 접속상태 목록 조회
 
 <br>
 
-**notification service**
+**notification server**
 
 - 미수신 메시지 푸시 (웹 푸시 + 안읽은 메시지 수 cnt)
 
 <br>
 
-**(infra) service-discovery service**
+**(infra) service-discovery server**
 
 - client-side discovery (spring-cloud-eureka)
-    - 가용 서비스 정보 동기화
-    - 채팅 서비스
+    - 가용 서버 정보 동기화
+    - 채팅 서버
       로드밸런서 [(spring-cloud-loadbalancer, round-robin)](https://docs.spring.io/spring-cloud-commons/reference/spring-cloud-commons/loadbalancer.html)
 
 <br>
 
-**(infra) api-gateway service**
+**(infra) api-gateway server**
 
-- 가용 서비스 라우팅 (spring-cloud-gateway)
+- 가용 서버 라우팅 (spring-cloud-gateway)
     - 기존 접속 채팅 서버 우선 라우팅
 
 <br>
@@ -217,20 +219,6 @@ distributed-chat-system
 <br>
 
 ## 세션 관리
-
-<br>
-
-## 웹 계층
-
-**무상태 서비스 (Stateless Services)**
-
-- client-api service
-- notification service
-
-**상태 유지 서비스 (Stateful Services)**
-
-- chatting service
-- connection-status service
 
 <br>
 
