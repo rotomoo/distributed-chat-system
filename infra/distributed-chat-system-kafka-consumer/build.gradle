@@ -2,7 +2,12 @@ dependencies {
     implementation project(':common:distributed-chat-system-common')
 
     // kafka
-    implementation('org.springframework.cloud:spring-cloud-starter-stream-kafka')
+//    implementation('org.springframework.cloud:spring-cloud-starter-stream-kafka')
+    implementation 'org.springframework.cloud:spring-cloud-stream'
+    implementation 'org.springframework.cloud:spring-cloud-stream-binder-kafka'
+    implementation 'org.springframework.kafka:spring-kafka'
+    testImplementation 'org.springframework.cloud:spring-cloud-stream-test-binder'
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
 }
 
 bootJar {

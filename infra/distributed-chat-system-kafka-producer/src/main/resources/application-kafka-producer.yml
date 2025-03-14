@@ -16,6 +16,10 @@ spring:
             key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
             value.deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
+#      binders:
+#        migration-kafka:
+
+
       bindings:
         domainEventString-in-0:
           content-type: text/plain
