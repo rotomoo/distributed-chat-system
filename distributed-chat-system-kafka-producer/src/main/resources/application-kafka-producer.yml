@@ -1,0 +1,52 @@
+spring:
+  config:
+    activate:
+      on-profile: default
+
+  kafka:
+    bootstrap-servers:
+      - localhost:9194
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: stage
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: prod
+---
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: stage
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: prod
