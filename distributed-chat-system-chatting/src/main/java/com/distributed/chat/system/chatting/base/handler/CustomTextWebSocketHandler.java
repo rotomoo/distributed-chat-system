@@ -33,34 +33,34 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
 
 
     @Override
-    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        log.info("webSessionId = {} connected", session.getId());
-        String sessionId = (String) session.getAttributes().get("sessionId");
-        log.info("login http SessionId = {}", sessionId);
+    public void afterConnectionEstablished(WebSocketSession webSocketSession) throws Exception {
+        log.info("webSessionId = {} connected", webSocketSession.getId());
+        String httpSessionId = (String) webSocketSession.getAttributes().get("sessionId");
+        log.info("login http SessionId = {}", httpSessionId);
 
         String serverIp = NetworkUtil.getServerIp();
 
         Map sessionData = redisTemplate.opsForHash()
-            .entries(sessionNamespace + ":sessions:" + sessionId);
+            .entries(sessionNamespace + ":sessions:" + httpSessionId);
         String userId = (String) sessionData.get("sessionAttr:userId");
 
-        String chatServerUri = serverIp + ":" + session.getLocalAddress().getPort();
+        String chatServerUri = serverIp + ":" + webSocketSession.getLocalAddress().getPort();
 
         redisTemplate.opsForValue().set(userId, "ws://" + chatServerUri);
         redisTemplate.opsForSet().add("chatServerUri:" + chatServerUri, userId);
 
-        this.webSocketSessionMap.put(session.getId(), session);
+        this.webSocketSessionMap.put(webSocketSession.getId(), webSocketSession);
     }
 
     @Override
-    public void handleMessage(WebSocketSession session, WebSocketMessage<?> message)
+    public void handleMessage(WebSocketSession webSocketSession, WebSocketMessage<?> message)
         throws Exception {
-        Principal principal = session.getPrincipal();
+        Principal principal = webSocketSession.getPrincipal();
         String sender = (principal != null) ? principal.getName() : "Anonymous";
 
-        log.info("{} sent {}", session.getId(), message.getPayload());
+        log.info("{} sent {}", webSocketSession.getId(), message.getPayload());
 
-        ChatMessage chatMessage = new ChatMessage(session.getId(), message.getPayload().toString());
+        ChatMessage chatMessage = new ChatMessage(webSocketSession.getId(), message.getPayload().toString());
 
         // {"sender":"fee1fa63-a0c2-d8e0-234a-510575341f9c","message":"124v14"}
         ObjectMapper objectMapper = new ObjectMapper();
@@ -68,12 +68,12 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         WebSocketMessage<String> newMessage = new TextMessage(jsonMessage);
 
         // fee1fa63-a0c2-d8e0-234a-510575341f9c:124
-//        String plainMessage = session.getId() + ":" + message.getPayload();
+//        String plainMessage = webSocketSession.getId() + ":" + message.getPayload();
 //        WebSocketMessage<String> newMessage = new TextMessage(plainMessage);
 
-        this.webSocketSessionMap.values().forEach(webSocketSession -> {
+        this.webSocketSessionMap.values().forEach(webSocketSessionValue -> {
             try {
-                webSocketSession.sendMessage(newMessage);
+                webSocketSessionValue.sendMessage(newMessage);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }

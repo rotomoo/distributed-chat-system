@@ -1,0 +1,6 @@
+dependencies {
+    implementation project(':common:distributed-chat-system-common')
+
+    // kafka
+    implementation 'org.springframework.kafka:spring-kafka'
+}

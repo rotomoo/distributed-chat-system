@@ -6,10 +6,6 @@ include 'common:distributed-chat-system-common'
 // [2] infra modules
 include 'infra:distributed-chat-system-api-gateway'
 
-include 'infra:distributed-chat-system-kafka-consumer'
-
-include 'infra:distributed-chat-system-kafka-producer'
-
 include 'infra:distributed-chat-system-mongodb'
 
 include 'infra:distributed-chat-system-mysql'
@@ -24,6 +20,10 @@ include 'distributed-chat-system-chatting'
 include 'distributed-chat-system-client-api'
 
 include 'distributed-chat-system-connection-status'
+
+include 'distributed-chat-system-kafka-consumer'
+
+include 'distributed-chat-system-kafka-producer'
 
 include 'distributed-chat-system-notification'
 

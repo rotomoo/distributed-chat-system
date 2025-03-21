@@ -25,7 +25,7 @@ public class CustomHandShakeInterceptor implements HandshakeInterceptor {
         HttpSession session = httpServletRequest.getSession(false);
 
         if (session != null) {
-            attributes.put("sessionId", session.getId());
+            attributes.put("httpSessionId", session.getId());
             return true;
         }
         throw new AuthenticationException("로그인 해주세요.");
