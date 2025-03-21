@@ -10,7 +10,7 @@ public class EventProducer {
 
     private final KafkaTemplate kafkaTemplate;
 
-    public void publish() {
+    public void publishChatSendMessage() {
         kafkaTemplate.send("chat-send-message", "message sent (chat-send-message)");
     }
 }
