@@ -15,8 +15,6 @@
         - 📁 distributed-chat-system-common
     - 📂 infra
         - 📁 distributed-chat-system-api-gateway
-        - 📁 distributed-chat-kafka-consumer
-        - 📁 distributed-chat-kafka-producer
         - 📁 distributed-chat-system-mongodb
         - 📁 distributed-chat-system-mysql
         - 📁 distributed-chat-system-redis
@@ -24,6 +22,8 @@
     - 📁 distributed-chat-system-chatting
     - 📁 distributed-chat-system-client-api
     - 📁 distributed-chat-system-connection-status
+    - 📁 distributed-chat-kafka-consumer
+    - 📁 distributed-chat-kafka-producer
     - 📁 distributed-chat-system-notification
 
 ```
@@ -73,27 +73,24 @@ distributed-chat-system
     {
       "messageId": "1353215",
       "channelId": "12345",
-      "createdUserId": "1142",
+      "createUserId": "1142",
       "content": "안녕하세요!",
-      "created_dt": "2024-11-18T10:30:00Z",
+      "create_dt": "2024-11-18T10:30:00Z",
       "reactions": [
         {
           "emoji": "👍",
-          "count": 3,
-          "users": ["user2", "user3","user4"]
+          "count": 3
         },
         {
           "emoji": "😂",
-          "count": 1,
-          "users": ["user5"]
+          "count": 1
         }
-      ]
+      ],
       "comments": [
         {
-          "commentId": "1241242",
-          "userId": "114346",
+          "createUserId": "114346",
           "content": "반가워요!",
-          "created_dt": "2024-11-18T10:35:00Z"
+          "create_dt": "2024-11-18T10:35:00Z"
         }
       ],
       "attachments": [
@@ -147,6 +144,22 @@ distributed-chat-system
 
 ## 기능 목록
 
+**(infra) api-gateway server**
+
+- 가용 서버 라우팅 (spring-cloud-gateway)
+    - 기존 접속 채팅 서버 우선 라우팅
+
+<br>
+
+**(infra) service-discovery server**
+
+- client-side discovery (spring-cloud-eureka)
+    - 가용 서버 정보 동기화
+    - 채팅 서버
+      로드밸런서 [(spring-cloud-loadbalancer, round-robin)](https://docs.spring.io/spring-cloud-commons/reference/spring-cloud-commons/loadbalancer.html)
+
+<br>
+
 **chatting server**
 
 - 메시지 전송
@@ -170,25 +183,21 @@ distributed-chat-system
 
 <br>
 
+**kafka-consumer server**
+
+- 채팅 메시지 전송 이벤트 소비
+
+<br>
+
+**kafka-producer server**
+
+- 채팅 메시지 전송 이벤트 발행
+
+<br>
+
 **notification server**
 
 - 미수신 메시지 푸시 (웹 푸시 + 안읽은 메시지 수 cnt)
-
-<br>
-
-**(infra) service-discovery server**
-
-- client-side discovery (spring-cloud-eureka)
-    - 가용 서버 정보 동기화
-    - 채팅 서버
-      로드밸런서 [(spring-cloud-loadbalancer, round-robin)](https://docs.spring.io/spring-cloud-commons/reference/spring-cloud-commons/loadbalancer.html)
-
-<br>
-
-**(infra) api-gateway server**
-
-- 가용 서버 라우팅 (spring-cloud-gateway)
-    - 기존 접속 채팅 서버 우선 라우팅
 
 <br>
 
