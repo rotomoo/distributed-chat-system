@@ -1,5 +1,6 @@
 package com.distributed.chat.system.chatting.base.handler;
 
+import com.distributed.chat.system.chatting.web.controller.feign.KafkaProducerClient;
 import com.distributed.chat.system.common.util.NetworkUtil;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -20,6 +21,7 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
 
     private final RedisTemplate redisTemplate;
     private final Map<String, WebSocketSession> webSocketSessionMap = new ConcurrentHashMap<>();
+    private final KafkaProducerClient kafkaProducerClient;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession webSocketSession) throws Exception {
@@ -45,6 +47,8 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
             .setSendUserId(Long.parseLong(userId))
             .setMessage(message.getPayload().toString())
             .build();
+        
+        kafkaProducerClient.publishChatSendMessage(chatMessage);
     }
 
     @Override

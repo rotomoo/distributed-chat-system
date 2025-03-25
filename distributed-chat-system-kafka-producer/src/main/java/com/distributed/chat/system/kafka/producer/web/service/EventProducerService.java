@@ -1,4 +1,4 @@
-package com.distributed.chat.system.kafka.producer.web.producer;
+package com.distributed.chat.system.kafka.producer.web.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -7,7 +7,7 @@ import protobuf.EdaChatMessage.ChatMessage;
 
 @Component
 @RequiredArgsConstructor
-public class EventProducer {
+public class EventProducerService {
 
     private final KafkaTemplate<String, byte[]> kafkaTemplate;
 
