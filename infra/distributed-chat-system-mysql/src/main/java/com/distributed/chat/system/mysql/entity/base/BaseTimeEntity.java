@@ -3,9 +3,7 @@ package com.distributed.chat.system.mysql.entity.base;
 import jakarta.persistence.Column;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.MappedSuperclass;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import lombok.Getter;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
@@ -18,20 +16,9 @@ public abstract class BaseTimeEntity {
 
     @CreatedDate
     @Column(columnDefinition = "datetime not null default CURRENT_TIMESTAMP comment '생성 일시'")
-    private LocalDateTime createdDt;
+    private Instant createDt;
 
     @LastModifiedDate
     @Column(columnDefinition = "datetime not null default CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP comment '수정 일시'")
-    private LocalDateTime updatedDt;
-
-    @PrePersist
-    protected void onCreate() {
-        createdDt = LocalDateTime.now();
-        updatedDt = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedDt = LocalDateTime.now();
-    }
+    private Instant updateDt;
 }
