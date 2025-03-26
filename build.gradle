@@ -76,20 +76,12 @@ subprojects {
 
     test {
         useJUnitPlatform()
-        systemProperty 'jasypt.encryptor.password', System.getenv("JASYPT_ENCRYPTOR_PASSWORD")
+        systemProperty 'jasypt.encryptor.password', System.getenv("jasypt_encryptor_password")
     }
 
     protobuf {
         protoc {
             artifact = "com.google.protobuf:protoc:3.6.1"
-        }
-    }
-
-    sourceSets {
-        main {
-            proto {
-                srcDir "${rootDir}/proto"
-            }
         }
     }
 }
