@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package protobuf;
+
+message ChatMessage {
+  int64 send_user_id = 1;
+  int64 channel_id = 2;
+  string message = 3;
+}
