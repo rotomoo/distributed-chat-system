@@ -1,4 +1,4 @@
-package com.distributed.chat.system.mongodb.document;
+package com.distributed.chat.system.mongodb.collection;
 
 import java.time.Instant;
 import lombok.AccessLevel;
@@ -13,13 +13,14 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-@Document("comment")
-public class Comment {
+@Document("chatMessage")
+public class ChatMessage {
 
     @Id
-    private String id;
-    private String chatMessageId;
-    private String content;
+    public String id;
+    public Long channelId;
+    public String content;
+    private Instant eventPublishDt;
     private Instant createDt;
     public Instant updateDt;
     public Instant deleteDt;

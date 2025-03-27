@@ -1,6 +1,6 @@
 package com.distributed.chat.system.mongodb.repository;
 
-import com.distributed.chat.system.mongodb.document.ChatMessage;
+import com.distributed.chat.system.mongodb.collection.ChatMessage;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Assertions;

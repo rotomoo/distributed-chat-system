@@ -1,6 +1,6 @@
-package com.distributed.chat.system.mongodb.document;
+package com.distributed.chat.system.mongodb.collection;
 
-import java.util.Set;
+import com.distributed.chat.system.mongodb.enums.AttachmentType;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -13,12 +13,12 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-@Document("reaction")
-public class Reaction {
+@Document("attachment")
+public class Attachment {
 
     @Id
     private String id;
     private String chatMessageId;
-    private String emoji;
-    private Set<Long> userIds;
+    private AttachmentType attachmentType;
+    private String url;
 }

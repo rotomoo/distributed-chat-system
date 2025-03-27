@@ -5,7 +5,7 @@ import jakarta.persistence.EntityListeners;
 import jakarta.persistence.MappedSuperclass;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import lombok.Getter;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
@@ -17,21 +17,21 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 public abstract class BaseTimeEntity {
 
     @CreatedDate
-    @Column(columnDefinition = "datetime not null default CURRENT_TIMESTAMP comment '생성 일시'")
-    private LocalDateTime createdDt;
+    @Column(columnDefinition = "datetime(6) not null default CURRENT_TIMESTAMP(6) comment '생성 일시'")
+    private Instant createDt;
 
     @LastModifiedDate
-    @Column(columnDefinition = "datetime not null default CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP comment '수정 일시'")
-    private LocalDateTime updatedDt;
+    @Column(columnDefinition = "datetime(6) not null default CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) comment '수정 일시'")
+    private Instant updateDt;
 
     @PrePersist
-    protected void onCreate() {
-        createdDt = LocalDateTime.now();
-        updatedDt = LocalDateTime.now();
+    private void onCreate() {
+        createDt = Instant.now();
+        updateDt = Instant.now();
     }
 
     @PreUpdate
-    protected void onUpdate() {
-        updatedDt = LocalDateTime.now();
+    private void onUpdate() {
+        updateDt = Instant.now();
     }
 }

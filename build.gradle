@@ -66,6 +66,9 @@ subprojects {
 
         // protobuf
         implementation 'com.google.protobuf:protobuf-java:3.25.2'
+
+        // validation
+        implementation 'org.springframework.boot:spring-boot-starter-validation'
     }
 
     dependencyManagement {
@@ -76,20 +79,12 @@ subprojects {
 
     test {
         useJUnitPlatform()
-        systemProperty 'jasypt.encryptor.password', System.getenv("JASYPT_ENCRYPTOR_PASSWORD")
+        systemProperty 'jasypt.encryptor.password', System.getenv("jasypt_encryptor_password")
     }
 
     protobuf {
         protoc {
             artifact = "com.google.protobuf:protoc:3.6.1"
-        }
-    }
-
-    sourceSets {
-        main {
-            proto {
-                srcDir "${rootDir}/proto"
-            }
         }
     }
 }
