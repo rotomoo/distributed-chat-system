@@ -1,6 +1,9 @@
 package com.distributed.chat.system.common.util;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.security.SecureRandom;
+import java.util.Map;
 
 public class StringUtil {
 
@@ -31,5 +34,14 @@ public class StringUtil {
 
 //        // Base 64 인코딩 필요시 사용
 //        return new String(Base64.getEncoder().encode(bytes));
+    }
+
+    public static Map<String, Object> toMap(Object obj) {
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        // LocalDateTime Casting
+        objectMapper.registerModule(new JavaTimeModule());
+
+        return objectMapper.convertValue(obj, Map.class);
     }
 }
