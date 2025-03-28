@@ -61,7 +61,8 @@ public class SecurityConfig {
         return http
             .csrf(AbstractHttpConfigurer::disable)
             .authorizeHttpRequests((requests) -> requests
-                .requestMatchers(privatePaths).authenticated()
+                // TODO 스웨거 테스트로 permitAll 처리함. 추후 스웨거에서 로그인 할 수 있게 설정 및 authenticated() 처리
+                .requestMatchers(privatePaths).permitAll()
                 .requestMatchers(publicPaths).permitAll()
                 .anyRequest().authenticated()
             )

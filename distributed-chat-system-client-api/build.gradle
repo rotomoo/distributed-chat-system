@@ -16,4 +16,7 @@ dependencies {
 
     // eureka-client
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+
+    // swagger
+    compileOnly('org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0')
 }

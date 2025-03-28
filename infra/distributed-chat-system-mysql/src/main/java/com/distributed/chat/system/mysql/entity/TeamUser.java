@@ -13,6 +13,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicInsert;
+import org.hibernate.annotations.DynamicUpdate;
 
 @Entity
 @Table(name = "team_user", indexes = {
@@ -23,6 +25,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @Builder
 @IdClass(TeamUserPk.class)
+@DynamicInsert
+@DynamicUpdate
 public class TeamUser extends BaseLoginInfoEntity {
 
     @Id

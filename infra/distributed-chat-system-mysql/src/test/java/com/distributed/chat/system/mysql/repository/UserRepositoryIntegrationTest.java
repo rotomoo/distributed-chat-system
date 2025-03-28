@@ -25,7 +25,6 @@ class UserRepositoryIntegrationTest {
             .userName("1")
             .account("findByAccountTest")
             .password("2")
-            .deleteYn(false)
             .build();
         userRepository.save(user);
 
