@@ -11,6 +11,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@Schema(name = "팀 목록 조회 요청")
 public class GetTeamsRequestDto extends PageRequestDto {
 
     /* 요청 필터 */

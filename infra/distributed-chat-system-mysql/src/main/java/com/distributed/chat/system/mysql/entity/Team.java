@@ -13,6 +13,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicInsert;
+import org.hibernate.annotations.DynamicUpdate;
 
 @Entity
 @Table(name = "team", indexes = {
@@ -23,6 +25,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
+@DynamicInsert
+@DynamicUpdate
 public class Team extends BaseLoginInfoEntity {
 
     @Id
@@ -30,7 +34,7 @@ public class Team extends BaseLoginInfoEntity {
     @Column(columnDefinition = "int(10) unsigned not null comment '팀 ID'")
     private Long id;
 
-    @Column(columnDefinition = "varchar(50) not null UNIQUE comment '팀 이름'")
+    @Column(columnDefinition = "varchar(50) not null comment '팀 이름'")
     private String teamName;
 
     @Column(columnDefinition = "boolean not null default false comment '삭제 여부'")

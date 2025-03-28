@@ -13,6 +13,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@Schema(name = "팀 목록 조회 응답")
 public class GetTeamsResponseDto {
 
     @Schema(name = "paging", title = "페이징 정보")

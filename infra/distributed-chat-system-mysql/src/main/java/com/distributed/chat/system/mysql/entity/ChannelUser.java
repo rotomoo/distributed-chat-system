@@ -13,6 +13,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicInsert;
+import org.hibernate.annotations.DynamicUpdate;
 
 @Entity
 @Table(name = "channel_user", indexes = {
@@ -23,6 +25,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @Builder
 @IdClass(ChannelUserPk.class)
+@DynamicInsert
+@DynamicUpdate
 public class ChannelUser extends BaseLoginInfoEntity {
 
     @Id

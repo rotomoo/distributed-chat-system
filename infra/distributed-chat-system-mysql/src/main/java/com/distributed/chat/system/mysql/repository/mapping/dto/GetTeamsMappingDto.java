@@ -1,6 +1,7 @@
 package com.distributed.chat.system.mysql.repository.mapping.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.time.Instant;
 import lombok.Getter;
 
 @Getter
@@ -14,4 +15,16 @@ public class GetTeamsMappingDto {
 
     @Schema(name = "deleteYn", title = "삭제 여부")
     private Boolean deleteYn;
+
+    @Schema(name = "createDt", title = "생성 일시")
+    private Instant createDt;
+
+    @Schema(name = "updateDt", title = "수정 일시")
+    private Instant updateDt;
+
+    @Schema(name = "createUserId", title = "생성 유저 ID")
+    private Long createUserId;
+
+    @Schema(name = "updateUserId", title = "수정 유저 ID")
+    private Long updateUserId;
 }
