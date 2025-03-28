@@ -41,6 +41,8 @@ public class TeamQueryDslImpl implements TeamQueryDsl {
             .from(team)
             .where(generateWhereConditionTeams(requestFilter))
             .orderBy(getOrderSpecifierTeams(pageable.getSort()).toArray(OrderSpecifier[]::new))
+            .offset(pageable.getOffset())
+            .limit(pageable.getPageSize())
             .fetch();
 
         JPAQuery<Long> countQuery = jpaQueryFactory.select(team.count())
