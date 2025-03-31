@@ -1,5 +1,6 @@
 package com.distributed.chat.system.mysql.repository;
 
+import com.distributed.chat.system.mysql.MysqlApplication;
 import com.distributed.chat.system.mysql.entity.QUser;
 import com.distributed.chat.system.mysql.entity.User;
 import com.querydsl.jpa.impl.JPAQueryFactory;
@@ -12,7 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @DisplayName("[통합] mysql 의존성 테스트")
-@SpringBootTest
+@SpringBootTest(classes = {MysqlApplication.class})
 @Transactional
 class MysqlDependencyIntegrationTest {
 
@@ -27,7 +28,7 @@ class MysqlDependencyIntegrationTest {
             .userName("querydslTest")
             .account("querydslTest")
             .password("querydslTest")
-            .deletedYn(false)
+            .deleteYn(false)
             .build();
         em.persist(user);
 

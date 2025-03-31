@@ -13,7 +13,7 @@ public class GetMyInfoResponseDto {
     private Long userId;
     private String userName;
     private String account;
-    private Boolean deletedYn;
+    private Boolean deleteYn;
     private String chatServerUrl;
 
     public GetMyInfoResponseDto(User user,
@@ -21,7 +21,7 @@ public class GetMyInfoResponseDto {
         this.userId = user.getId();
         this.userName = user.getUserName();
         this.account = user.getAccount();
-        this.deletedYn = user.getDeletedYn();
+        this.deleteYn = user.getDeleteYn();
         this.chatServerUrl = chatServerUrl;
     }
 }

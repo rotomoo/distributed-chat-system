@@ -1,17 +1,32 @@
 package com.distributed.chat.system.mysql.entity;
 
 import com.distributed.chat.system.mysql.entity.base.BaseTimeEntity;
-import jakarta.persistence.*;
-import lombok.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicInsert;
+import org.hibernate.annotations.DynamicUpdate;
 
 @Entity
 @Table(name = "user", indexes = {
-        @Index(name = "ix_user_user_name", columnList = "userName")
+    @Index(name = "ix_user_user_name", columnList = "userName"),
+    @Index(name = "ix_user_delete_yn", columnList = "delete_yn")
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
+@DynamicInsert
+@DynamicUpdate
 public class User extends BaseTimeEntity {
 
     @Id
@@ -29,5 +44,5 @@ public class User extends BaseTimeEntity {
     private String password;
 
     @Column(columnDefinition = "boolean not null default false comment '삭제 여부'")
-    private Boolean deletedYn;
+    private Boolean deleteYn;
 }

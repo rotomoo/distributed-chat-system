@@ -14,10 +14,10 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 public abstract class BaseLoginInfoEntity extends BaseTimeEntity {
 
     @CreatedBy
-    @Column(columnDefinition = "int(10) unsigned comment '생성 로그인 ID'")
-    private Long createAdminId;
+    @Column(columnDefinition = "int(10) unsigned comment '생성 유저 ID'")
+    private Long createUserId;
 
     @LastModifiedBy
-    @Column(columnDefinition = "int(10) unsigned comment '수정 로그인 ID'")
-    private Long updateAdminId;
+    @Column(columnDefinition = "int(10) unsigned comment '수정 유저 ID'")
+    private Long updateUserId;
 }

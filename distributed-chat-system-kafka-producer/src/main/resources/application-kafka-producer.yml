@@ -3,12 +3,25 @@ spring:
     activate:
       on-profile: default
 
+  application:
+    name: kafka-producer
+
   kafka:
     bootstrap-servers:
       - localhost:9194
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:7710/eureka/
+
+  instance:
+    instance-id: ${spring.cloud.client.hostname}:${spring.application.instance_id:${random.value}}
+#      lease-renewal-interval-in-seconds: 5 # 하트비트가 수신되지 않으면 서비스 등록 해제 (default: 30s)
+#      lease-expiration-duration-in-seconds: 15 # 하트비트가 수신되지 않으면 서비스 등록 해제 (default: 90s)
 
 ---
 

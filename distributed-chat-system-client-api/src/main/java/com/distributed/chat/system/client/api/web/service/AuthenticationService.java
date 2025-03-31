@@ -48,7 +48,6 @@ public class AuthenticationService {
             .account(signupRequestDto.getAccount())
             .userName(signupRequestDto.getAccount())
             .password(passwordEncoder.encode(signupRequestDto.getPassword()))
-            .deletedYn(false)
             .build();
     }
 }

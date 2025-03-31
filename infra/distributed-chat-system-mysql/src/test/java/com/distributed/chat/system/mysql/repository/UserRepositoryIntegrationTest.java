@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
-@DisplayName("[통합] userRepository 테스트")
+@DisplayName("[통합] UserRepository 테스트")
 @SpringBootTest
 @Transactional
 class UserRepositoryIntegrationTest {
@@ -25,7 +25,6 @@ class UserRepositoryIntegrationTest {
             .userName("1")
             .account("findByAccountTest")
             .password("2")
-            .deletedYn(false)
             .build();
         userRepository.save(user);
 
