@@ -148,6 +148,8 @@ distributed-chat-system
 
 - 가용 서버 라우팅 (spring-cloud-gateway)
     - 기존 접속 채팅 서버 우선 라우팅
+    - 채팅 서버
+      로드밸런서 [(spring-cloud-loadbalancer, round-robin)](https://docs.spring.io/spring-cloud-commons/reference/spring-cloud-commons/loadbalancer.html)
 
 <br>
 
@@ -155,8 +157,6 @@ distributed-chat-system
 
 - client-side discovery (spring-cloud-eureka)
     - 가용 서버 정보 동기화
-    - 채팅 서버
-      로드밸런서 [(spring-cloud-loadbalancer, round-robin)](https://docs.spring.io/spring-cloud-commons/reference/spring-cloud-commons/loadbalancer.html)
 
 <br>
 
