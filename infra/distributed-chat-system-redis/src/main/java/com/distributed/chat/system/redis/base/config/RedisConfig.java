@@ -1,8 +1,11 @@
 package com.distributed.chat.system.redis.base.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.lettuce.core.ReadFrom;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisSentinelConfiguration;
+import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
@@ -13,7 +16,18 @@ public class RedisConfig {
 
     @Bean
     public LettuceConnectionFactory lettuceConnectionFactory() {
-        return new LettuceConnectionFactory();
+        LettuceClientConfiguration clientConfig = LettuceClientConfiguration.builder()
+            .readFrom(ReadFrom.REPLICA_PREFERRED)
+            .build();
+
+        RedisSentinelConfiguration sentinelConfig = new RedisSentinelConfiguration()
+            .master("mymaster")
+            .sentinel("redis-sentinel", 26379)
+            .sentinel("redis-sentinel2", 26380)
+            .sentinel("redis-sentinel3", 26381);
+
+        return new LettuceConnectionFactory(sentinelConfig, clientConfig);
+//        return new LettuceConnectionFactory();
     }
 
     @Bean

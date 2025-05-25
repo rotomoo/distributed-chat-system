@@ -5,9 +5,31 @@ spring:
 
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/chat?serverTimezone=Asia/Seoul
-    username: ENC(fPnE1INI6bcoYInD+rxQgA==)
-    password: ENC(bFjCmcg6n22XW96Wcj661NHrk5027tcL)
+    url: jdbc:mysql://localhost:3306/chat?serverTimezone=Asia/Seoul&characterEncoding=utf-8
+    username: ENC(Or4UtdD6fHHXS07D9lucmg==)
+    password: ENC(Or4UtdD6fHHXS07D9lucmg==)
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        auto_quote_keyword: true
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://mysql-container:3306/chat?serverTimezone=Asia/Seoul&characterEncoding=utf-8
+    username: ENC(Or4UtdD6fHHXS07D9lucmg==)
+    password: ENC(Or4UtdD6fHHXS07D9lucmg==)
 
   jpa:
     hibernate:

@@ -12,6 +12,17 @@ jasypt:
 spring:
   config:
     activate:
+      on-profile: docker
+
+jasypt:
+  encryptor:
+    password: ${jasypt_encryptor_password}
+
+---
+
+spring:
+  config:
+    activate:
       on-profile: dev
 
 ---
