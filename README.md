@@ -22,8 +22,8 @@
     - 📁 distributed-chat-system-chatting
     - 📁 distributed-chat-system-client-api
     - 📁 distributed-chat-system-connection-status
-    - 📁 distributed-chat-kafka-consumer
-    - 📁 distributed-chat-kafka-producer
+    - 📁 distributed-chat-system-kafka-consumer
+    - 📁 distributed-chat-system-kafka-producer
     - 📁 distributed-chat-system-notification
 
 ```
@@ -104,7 +104,8 @@ distributed-chat-system
   <br>
 - Redis
 
-  Shared Session Store - Redis 기반 세션 중앙화
+  Shared Session Store - Redis 기반 세션 중앙화  <br>
+  [Redis Sentinel (Failover : SPOF 방지, 가용성 확보)](https://rotomoo.tistory.com/101)
 
 
 - S3
@@ -211,7 +212,7 @@ distributed-chat-system
   ![rdb_table](./image/rdb_table.png)
 - 분산 처리
     - Replication : 주(master) - 쓰기 연산, 부(slave) - 읽기 연산
-    - 자동 Failover : 가용성 확보
+    - Failover : 가용성 확보
 
 <br>
 

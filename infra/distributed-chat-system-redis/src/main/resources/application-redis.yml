@@ -14,6 +14,19 @@ spring:
 spring:
   config:
     activate:
+      on-profile: docker
+
+  session:
+    store-type: redis
+    redis:
+      namespace: distributed-chat-system
+    timeout: 15m # default 세션 만료 기한 15분
+
+---
+
+spring:
+  config:
+    activate:
       on-profile: dev
 
 ---

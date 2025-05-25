@@ -8,6 +8,13 @@ spring:
 spring:
   config:
     activate:
+      on-profile: docker
+
+---
+
+spring:
+  config:
+    activate:
       on-profile: dev
 
 ---
