@@ -17,6 +17,22 @@ spring:
 spring:
   config:
     activate:
+      on-profile: docker
+
+  kafka:
+    bootstrap-servers:
+      - localhost:9194
+    consumer:
+      group-id: chat-group-1
+      auto-offset-reset: earliest
+      key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value.deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+
+---
+
+spring:
+  config:
+    activate:
       on-profile: dev
 
 ---
