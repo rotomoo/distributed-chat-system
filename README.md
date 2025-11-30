@@ -39,6 +39,25 @@ distributed-chat-system
 
 # 설계과정
 
+## Think
+- 슬랙, 디스코드 같은 대규모 트래픽 서비스를 경험해 보고자 DAU 1,000만 명 규모의 트래픽을 감당할 수 있는 채팅 시스템 아키텍처를 수립하고 데이터 아카이빙 전략을 설계
+- 팀 단위 협업 시 개발 생산성을 높이고, 기능 변경과 확장이 용이한 구조를 만들기 위해 서비스별 책임이 명확히 분리된 멀티 모듈 구조를 구축하여 유지보수성과 테스트 효율성을 확보
+- RDB로는 기하급수적으로 늘어나는 채팅 데이터의 쓰기/조회 부하를 감당하기 어렵다고 판단하여 샤딩이 가능한 MongoDB 기반으로 채널 단위 메시지 컬렉션을 설계하고, WebSocket 기반 실시간 1:1 및 채널 채팅을 구현
+    - 카프카를 Stomp로 사용하는것보단 ‘메시지 전송’ 같은 이벤트를 발행해서 컨슈머에서 관리하는게 맞다고 생각함. 채팅 서버간 의존도 안하게 되어 느슨한 결합도됨.
+- 각 채팅 서버 메모리에 독립적으로 존재하는 WebSocketSession간 통신을 위해 유저의 접속 서버 정보를{userId: serverUrl} 형식을 redis로, 서버내 접속한 유저들을 RedisSet으로 저장 https://github.com/rotomoo/distributed-chat-system/blob/723e314b9c29c084696eaedbbb743eed99e30c1f/distributed-chat-system-chatting/src/main/java/com/distributed/chat/system/chatting/base/handler/CustomTextWebSocketHandler.java#L20-L38
+- 컨슈머 서버를 통해 채팅 서버 간 직접 연결 없이 메시지 전달 책임을 분리 https://github.com/rotomoo/distributed-chat-system/blob/723e314b9c29c084696eaedbbb743eed99e30c1f/distributed-chat-system-chatting/src/main/java/com/distributed/chat/system/chatting/base/handler/CustomTextWebSocketHandler.java#L40-L52
+    - 컨슈머 서버에서 Redis에 저장되어있는 세션 데이터들을 통해 접속한 채팅서버로 메시지를 전달.
+    - 이때 컨슈머 서버에서 해당 데이터를 MongoDB에 저장.
+    - 실제 전달할 메시지는 채팅서버 메모리를 통해 전송, 이전 메시지는 채팅서버 접속시 MongoDB로 조회.
+    어차피 채널 단위로 샤딩이 되어있고 가장 최근 데이터 몇개만 slice로 조회하면 성능도 괜찮을거라 생각됨.
+- Spring Cloud를 도입하여 클라이언트 사이드 서비스 디스커버리 패턴 적용.
+    - 서버 스케일 아웃, 채팅서버 라우팅 등의 확장에 유리한 아키텍처 적용 https://github.com/rotomoo/distributed-chat-system/blob/723e314b9c29c084696eaedbbb743eed99e30c1f/infra/distributed-chat-system-api-gateway/src/main/resources/application-api-gateway.yml#L12-L24
+    - 사용자가 다른 세션으로 재접속하면, 메시지 수신을 위해 각 채팅 서버에 개별 전송 필요하니,
+    기존 접속한 서버로 재접속하게 하여 https://github.com/rotomoo/distributed-chat-system/blob/723e314b9c29c084696eaedbbb743eed99e30c1f/infra/distributed-chat-system-api-gateway/src/main/java/com/distributed/chat/system/api/gateway/base/filter/ChattingRoutingFilter.java#L22-L56 Map으로 관리, 새로운 것으로 덮어씌우는 방식으로 설계
+    이때 Thread-safe한 ConcurrentHashMap으로 관리하여 동시에 접속하여도 문제없도록 설계 https://github.com/rotomoo/distributed-chat-system/blob/723e314b9c29c084696eaedbbb743eed99e30c1f/distributed-chat-system-chatting/src/main/java/com/distributed/chat/system/chatting/base/handler/CustomTextWebSocketHandler.java#L20-L23
+    - Eureka 인스턴스 종료 이벤트 감지 시, 해당 서버에 연결된 사용자의 Redis 세션 정보도 삭제 https://github.com/rotomoo/distributed-chat-system/blob/723e314b9c29c084696eaedbbb743eed99e30c1f/infra/distributed-chat-system-service-discovery/src/main/java/com/distributed/chat/system/service/discovery/base/listener/EurekaInstanceCanceledListener.java#L17-L42
+- 서버간 메시지 포맷 불일치를 구글 프로토콜 버퍼(Protobuf)를 도입하여 포맷 일원화를 적용 https://github.com/rotomoo/distributed-chat-system/blob/723e314b9c29c084696eaedbbb743eed99e30c1f/common/distributed-chat-system-common/src/main/proto/eda_chat_message.proto#L1-L9
+
 ## 기능 요구사항
 
 - 팀 기능
@@ -222,13 +241,13 @@ distributed-chat-system
 - 분산 처리
     - 샤딩 키 : ChannelId
 
-## 채팅 메시지 흐름
+## 채팅 메시지 흐름 (시퀀스 다이어그램 그려봐야됨)
 
 **Client-Server 양방향 통신 [Web Socket 프로토콜](https://rotomoo.tistory.com/100)**
 
 <br>
 
-## 세션 관리
+## 세션 관리 (시퀀스 다이어그램 그려봐야됨)
 
 <br>
 
@@ -236,8 +255,8 @@ distributed-chat-system
 
 **Redis [Look Aside + Write Around 전략](https://rotomoo.tistory.com/99)**
 ![caching-strategies](./image/caching-strategies.png)
-**CDN 적용**
+**CDN 적용** (나중에 적용해보기)
 
 ## 모니터링
 
-**Grafana**
+**Grafana** (나중에 적용해보기)
