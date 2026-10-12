@@ -1,12 +1,16 @@
 # 전체 스택: docker compose up -d --build  →  http://localhost:8080
 #
+# 비밀값은 레포에 두지 않는다. .env.example 을 .env 로 복사해서 채운 뒤 실행 (.env 는 git 미추적)
+#
 # 앱 서비스는 루트 Dockerfile 하나를 공유하고 MODULE 로 어떤 jar 를 띄울지 고른다.
 
 x-app: &app
   restart: on-failure
   environment: &app-env
     spring_profiles_active: docker
-    jasypt_encryptor_password: cXVkZGxmNDEw
+    jasypt_encryptor_password: ${JASYPT_ENCRYPTOR_PASSWORD:?.env 에 JASYPT_ENCRYPTOR_PASSWORD 를 설정하세요}
+    DB_USERNAME: ${DB_USERNAME:?.env 에 DB_USERNAME 을 설정하세요}
+    DB_PASSWORD: ${DB_PASSWORD:?.env 에 DB_PASSWORD 를 설정하세요}
     JAVA_OPTS: -Xmx256m
   depends_on: &app-depends
     service-discovery:
@@ -61,11 +65,14 @@ services:
     image: mysql:8.0
     ports:
       - "3306:3306"
+    # 앱은 root 가 아닌 전용 계정(DB_USERNAME)으로 chat 스키마에만 접근
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?.env 에 MYSQL_ROOT_PASSWORD 를 설정하세요}
       MYSQL_DATABASE: chat
+      MYSQL_USER: ${DB_USERNAME:?.env 에 DB_USERNAME 을 설정하세요}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?.env 에 DB_PASSWORD 를 설정하세요}
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\""]
       interval: 5s
       timeout: 3s
       retries: 20

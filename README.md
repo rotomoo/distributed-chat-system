@@ -3,10 +3,14 @@
 ## 사용법
 
 ```markdown
-1. docker compose up -d --build
+1. cp .env.example .env   # 비밀값 채우기 (.env 는 git 미추적)
 
-2. visit localhost:8080
+2. docker compose up -d --build
+
+3. visit localhost:8080
 ```
+
+- IDE 에서 서비스를 직접 띄울 때는 `DB_USERNAME`, `DB_PASSWORD`, `jasypt_encryptor_password` 를 실행 환경변수로 넣는다.
 
 **프론트엔드 (frontend/ — Vite + React)**
 
@@ -26,6 +30,7 @@
 - 인증 : GitHub OIDC → IAM 역할 `chat-github-actions` (액세스 키 없음, main 브랜치만 허용)
 - 배포 : SSM Run Command 가 서버의 `/opt/chat` 에서 `deploy/deploy.sh` 실행 (`docker-compose.yml` + `deploy/docker-compose.prod.yml`)
 - 서버에서 직접 : `ssh -i ~/.ssh/chat-server ubuntu@15.165.80.205` → `cd /opt/chat && sudo bash deploy/deploy.sh`
+- 서버 비밀값 : `/opt/chat/.env` (서버에서 직접 작성, 레포에 없음)
 
 ## 모듈 계층
 

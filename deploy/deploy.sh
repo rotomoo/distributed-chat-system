@@ -8,6 +8,11 @@ export ECR_REGISTRY=782875439193.dkr.ecr.ap-northeast-2.amazonaws.com
 export IMAGE_TAG="${1:-latest}"
 
 cd "$(dirname "$0")/.."
+# 비밀값(.env)은 레포에 없다. 서버에서 직접 만든다: cp .env.example .env && vi .env
+if [ ! -f .env ]; then
+  echo "/opt/chat/.env 가 없습니다. .env.example 을 참고해 서버에서 직접 만들어 주세요." >&2
+  exit 1
+fi
 compose() { docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml "$@"; }
 
 echo "== pull ($IMAGE_TAG)"

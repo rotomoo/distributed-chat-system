@@ -6,8 +6,8 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/chat?serverTimezone=Asia/Seoul&characterEncoding=utf-8
-    username: ENC(Or4UtdD6fHHXS07D9lucmg==)
-    password: ENC(Or4UtdD6fHHXS07D9lucmg==)
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
 
   jpa:
     hibernate:
@@ -28,8 +28,8 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://mysql-container:3306/chat?serverTimezone=Asia/Seoul&characterEncoding=utf-8
-    username: ENC(Or4UtdD6fHHXS07D9lucmg==)
-    password: ENC(Or4UtdD6fHHXS07D9lucmg==)
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
 
   jpa:
     hibernate:
