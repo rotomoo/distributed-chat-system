@@ -1,5 +1,15 @@
 # Distributed Chat System
 
+## 데모
+
+**http://15.165.80.205:8080** (AWS EC2, 고정 IP)
+
+- 회원가입 → 로그인 → `Connect` → 메시지 전송. 다른 브라우저(시크릿 창)에서 다른 계정으로 접속하면 서로 메시지가 오간다.
+- 크레딧 절약을 위해 서버는 평소 꺼져 있다. 접속이 안 되면 서버를 켠다 (켜고 배포까지 약 3~5분):
+  - GitHub → Actions → `Server` → Run workflow → `start`
+  - 또는 `gh workflow run server.yml -f action=start`
+- 매일 02:00 KST 에 자동으로 꺼진다. 다 쓰면 `stop` 으로 바로 꺼도 된다.
+
 ## 사용법
 
 ```markdown
