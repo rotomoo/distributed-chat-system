@@ -9,7 +9,7 @@ x-app: &app
   environment: &app-env
     spring_profiles_active: docker
     jasypt_encryptor_password: ${JASYPT_ENCRYPTOR_PASSWORD:?.env 에 JASYPT_ENCRYPTOR_PASSWORD 를 설정하세요}
-    DB_USERNAME: ${DB_USERNAME:?.env 에 DB_USERNAME 을 설정하세요}
+    DB_USERNAME: ${DB_USERNAME:-chat}
     DB_PASSWORD: ${DB_PASSWORD:?.env 에 DB_PASSWORD 를 설정하세요}
     JAVA_OPTS: -Xmx256m
   depends_on: &app-depends
@@ -66,10 +66,11 @@ services:
     ports:
       - "3306:3306"
     # 앱은 root 가 아닌 전용 계정(DB_USERNAME)으로 chat 스키마에만 접근
+    # root 비밀번호는 아무도 쓰지 않으므로 컨테이너가 무작위로 만든다 (로그에 한 번 출력됨)
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?.env 에 MYSQL_ROOT_PASSWORD 를 설정하세요}
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
       MYSQL_DATABASE: chat
-      MYSQL_USER: ${DB_USERNAME:?.env 에 DB_USERNAME 을 설정하세요}
+      MYSQL_USER: ${DB_USERNAME:-chat}
       MYSQL_PASSWORD: ${DB_PASSWORD:?.env 에 DB_PASSWORD 를 설정하세요}
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\""]
