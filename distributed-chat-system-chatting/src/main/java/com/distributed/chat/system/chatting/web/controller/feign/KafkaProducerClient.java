@@ -7,6 +7,6 @@ import protobuf.EdaChatMessage.ChatMessage;
 @FeignClient(name = "kafka-producer", path = "/v1/private/event")
 public interface KafkaProducerClient {
 
-    @PostMapping("/publish/chat-send-message")
+    @PostMapping(value = "/publish/chat-send-message", consumes = "application/x-protobuf")
     void publishChatSendMessage(ChatMessage message);
 }

@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initializeTeamSection();
 });
 
+let myUserId;
+
 async function checkMyInfoAndRedirect() {
   try {
     const response = await fetch('/v1/private/api/user/my-info', {
@@ -14,7 +16,9 @@ async function checkMyInfoAndRedirect() {
     const data = await response.json();
     if (!response.ok || data.code !== 0) {
       window.location.href = '/';
+      return;
     }
+    myUserId = data.data.userId;
   } catch (error) {
     console.error('Error verifying login:', error);
     window.location.href = '/';
@@ -43,8 +47,11 @@ function onOpen() {
   console.log('WebSocket connected');
 }
 
+// 컨슈머가 채팅 서버를 통해 전달한 메시지 : {messageId, channelId, sendUserId, message, publishDt}
+// 내가 보낸 메시지도 카프카를 거쳐 돌아오므로 여기서 같이 그린다
 function onMessage(event) {
-  showMessage(event.data, false);
+  const chatMessage = JSON.parse(event.data);
+  showMessage(chatMessage.message, chatMessage.sendUserId === myUserId);
 }
 
 function onClose() {
@@ -52,7 +59,8 @@ function onClose() {
 }
 
 function connectWebSocket() {
-  webSocket = new WebSocket('ws://localhost:8080/websocket');
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  webSocket = new WebSocket(`${protocol}://${window.location.host}/websocket`);
   webSocket.onopen = onOpen;
   webSocket.onmessage = onMessage;
   webSocket.onclose = onClose;
@@ -71,7 +79,6 @@ function sendMessage() {
   const message = input.value;
   if (webSocket?.readyState === WebSocket.OPEN) {
     webSocket.send(message);
-    showMessage(message, true);
     input.value = '';
   }
 }

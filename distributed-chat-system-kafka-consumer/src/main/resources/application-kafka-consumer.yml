@@ -9,8 +9,8 @@ spring:
     consumer:
       group-id: chat-group-1
       auto-offset-reset: earliest
-      key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value.deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
 
 ---
 
@@ -21,33 +21,13 @@ spring:
 
   kafka:
     bootstrap-servers:
-      - localhost:9194
+      - kafka-1:9192
     consumer:
       group-id: chat-group-1
       auto-offset-reset: earliest
-      key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value.deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
 
----
-
-spring:
-  config:
-    activate:
-      on-profile: dev
-
----
-
-spring:
-  config:
-    activate:
-      on-profile: stage
-
----
-
-spring:
-  config:
-    activate:
-      on-profile: prod
 ---
 
 spring:

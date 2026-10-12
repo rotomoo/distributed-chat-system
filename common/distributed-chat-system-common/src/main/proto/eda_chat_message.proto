@@ -6,4 +6,12 @@ message ChatMessage {
   int64 send_user_id = 1;
   int64 channel_id = 2;
   string message = 3;
+  int64 publish_dt = 4; // epoch millis
+}
+
+// 컨슈머 -> 채팅 서버 : 해당 채팅 서버에 접속한 수신자에게 전달할 메시지
+message ChatMessageDelivery {
+  string message_id = 1;
+  ChatMessage chat_message = 2;
+  repeated int64 receive_user_ids = 3;
 }
