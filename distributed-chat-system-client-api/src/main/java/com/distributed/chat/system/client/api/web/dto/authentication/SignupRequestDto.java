@@ -1,6 +1,6 @@
 package com.distributed.chat.system.client.api.web.dto.authentication;
 
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -12,10 +12,10 @@ import lombok.Setter;
 @AllArgsConstructor
 public class SignupRequestDto {
 
-    @NotNull
+    @NotBlank
     private String account;
 
-    @NotNull
+    @NotBlank
     private String password;
 }
 
