@@ -1,0 +1,75 @@
+name: Deploy
+
+# main 에 머지되면: 테스트 → 이미지 6종 ECR push → 서버가 켜져 있으면 SSM 으로 배포
+# 서버가 꺼져 있으면 이미지만 올려 두고, 다음에 server.yml 로 켤 때 latest 로 배포된다.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  id-token: write # GitHub OIDC → AWS 역할 (액세스 키 없음)
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  AWS_ROLE_ARN: arn:aws:iam::782875439193:role/chat-github-actions
+  ECR_REGISTRY: 782875439193.dkr.ecr.ap-northeast-2.amazonaws.com
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  build-push:
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      # docker-bake.hcl : 빌드 단계를 한 번만 돌리고 서비스 6개 이미지를 뽑는다
+      - name: Build & Push images
+        uses: docker/bake-action@v5
+        env:
+          REGISTRY: ${{ env.ECR_REGISTRY }}
+          TAG: ${{ github.sha }}
+        with:
+          files: docker-bake.hcl
+          push: true
+          set: |
+            *.cache-from=type=gha,scope=chat
+            *.cache-to=type=gha,scope=chat,mode=max
+
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to chat-server
+        run: |
+          state=$(aws ec2 describe-instances --filters Name=tag:Name,Values=chat-server \
+            --query 'Reservations[0].Instances[0].State.Name' --output text)
+          if [ "$state" != "running" ]; then
+            echo "::notice::chat-server 가 꺼져 있음($state). 이미지는 ECR 에 올라갔고, Server 워크플로로 켜면 배포된다."
+            exit 0
+          fi
+          deploy/ssm-deploy.sh "${{ github.sha }}" "${{ github.sha }}"

@@ -1,0 +1,18 @@
+# 서버(EC2) 전용 override : 앱 서비스를 직접 빌드하지 않고 ECR 이미지를 받는다.
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --no-build
+
+services:
+  service-discovery:
+    image: ${ECR_REGISTRY}/distributed-chat-system/service-discovery:${IMAGE_TAG:-latest}
+  api-gateway:
+    image: ${ECR_REGISTRY}/distributed-chat-system/api-gateway:${IMAGE_TAG:-latest}
+  client-api:
+    image: ${ECR_REGISTRY}/distributed-chat-system/client-api:${IMAGE_TAG:-latest}
+  chatting-1:
+    image: ${ECR_REGISTRY}/distributed-chat-system/chatting:${IMAGE_TAG:-latest}
+  chatting-2:
+    image: ${ECR_REGISTRY}/distributed-chat-system/chatting:${IMAGE_TAG:-latest}
+  kafka-producer:
+    image: ${ECR_REGISTRY}/distributed-chat-system/kafka-producer:${IMAGE_TAG:-latest}
+  kafka-consumer:
+    image: ${ECR_REGISTRY}/distributed-chat-system/kafka-consumer:${IMAGE_TAG:-latest}

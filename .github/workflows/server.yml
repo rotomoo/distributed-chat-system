@@ -1,0 +1,59 @@
+name: Server
+
+# 크레딧을 아끼기 위해 서버는 필요할 때만 켠다.
+#  - Actions 탭 → Server → Run workflow → start / stop
+#  - 매일 02:00 KST 자동 종료
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: start 는 서버를 켜고 main 최신 버전으로 배포까지 한다
+        type: choice
+        options: [start, stop]
+        required: true
+  schedule:
+    - cron: "0 17 * * *" # 17:00 UTC = 02:00 KST
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  AWS_ROLE_ARN: arn:aws:iam::782875439193:role/chat-github-actions
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Find chat-server
+        run: |
+          iid=$(aws ec2 describe-instances --filters Name=tag:Name,Values=chat-server \
+            Name=instance-state-name,Values=pending,running,stopping,stopped \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          echo "IID=$iid" >> "$GITHUB_ENV"
+
+      - name: Stop
+        if: github.event_name == 'schedule' || inputs.action == 'stop'
+        run: |
+          aws ec2 stop-instances --instance-ids "$IID" --query 'StoppingInstances[0].CurrentState.Name' --output text
+          aws ec2 wait instance-stopped --instance-ids "$IID"
+          echo "::notice::chat-server stopped"
+
+      - name: Start & Deploy latest
+        if: inputs.action == 'start'
+        run: |
+          aws ec2 start-instances --instance-ids "$IID" --query 'StartingInstances[0].CurrentState.Name' --output text
+          aws ec2 wait instance-running --instance-ids "$IID"
+          deploy/ssm-deploy.sh origin/main latest

@@ -14,6 +14,19 @@
 - `./gradlew build` 시 api-gateway 의 `processResources` 가 npm 빌드를 함께 돌린다. npm 이 없으면 `SKIP_FRONTEND=true` 로 건너뛴다.
 - 개발 중에는 `cd frontend && npm run dev` → `localhost:5173` (`/v1`, `/websocket` 은 `:8080` 게이트웨이로 프록시)
 
+## CI/CD (GitHub Actions → AWS)
+
+| 워크플로 | 언제 | 하는 일 |
+|---|---|---|
+| `CI` | PR, main 외 브랜치 push | 빌드 + 프론트 빌드 + 테스트 (mysql, mongodb 서비스 컨테이너) |
+| `Deploy` | main 머지 | CI → 서비스 6종 이미지 ECR push → 서버가 켜져 있으면 SSM 으로 배포 |
+| `Server` | 수동(start/stop), 매일 02:00 KST | 서버 켜고 main 최신으로 배포 / 서버 끄기 (크레딧 절약) |
+
+- 서버 : EC2 `chat-server` (m7i-flex.large, ap-northeast-2), `http://15.165.80.205:8080`
+- 인증 : GitHub OIDC → IAM 역할 `chat-github-actions` (액세스 키 없음, main 브랜치만 허용)
+- 배포 : SSM Run Command 가 서버의 `/opt/chat` 에서 `deploy/deploy.sh` 실행 (`docker-compose.yml` + `deploy/docker-compose.prod.yml`)
+- 서버에서 직접 : `ssh -i ~/.ssh/chat-server ubuntu@15.165.80.205` → `cd /opt/chat && sudo bash deploy/deploy.sh`
+
 ## 모듈 계층
 
 - distributed-chat-system
