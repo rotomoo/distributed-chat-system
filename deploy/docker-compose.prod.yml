@@ -1,13 +1,19 @@
 # 서버(EC2) 전용 override : 앱 서비스를 직접 빌드하지 않고 ECR 이미지를 받는다.
 #   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --no-build
+#
+# 서버에서는 api-gateway(8080) 외에 호스트 포트를 열지 않는다.
+# redis/mongodb/kafka/eureka 등은 인증이 없어서, 보안 그룹이 실수로 열리면 그대로 노출되기 때문.
+# 컨테이너끼리는 compose 네트워크로 통신하므로 포트를 닫아도 동작은 같다.
 
 services:
   service-discovery:
     image: ${ECR_REGISTRY}/distributed-chat-system/service-discovery:${IMAGE_TAG:-latest}
+    ports: !reset []
   api-gateway:
     image: ${ECR_REGISTRY}/distributed-chat-system/api-gateway:${IMAGE_TAG:-latest}
   client-api:
     image: ${ECR_REGISTRY}/distributed-chat-system/client-api:${IMAGE_TAG:-latest}
+    ports: !reset []
   chatting-1:
     image: ${ECR_REGISTRY}/distributed-chat-system/chatting:${IMAGE_TAG:-latest}
   chatting-2:
@@ -16,3 +22,25 @@ services:
     image: ${ECR_REGISTRY}/distributed-chat-system/kafka-producer:${IMAGE_TAG:-latest}
   kafka-consumer:
     image: ${ECR_REGISTRY}/distributed-chat-system/kafka-consumer:${IMAGE_TAG:-latest}
+
+  # ── 인프라 : 호스트 포트 닫기 ───────────────────────────────────
+  redis:
+    ports: !reset []
+  redis-replica:
+    ports: !reset []
+  redis-replica2:
+    ports: !reset []
+  redis-sentinel:
+    ports: !reset []
+  redis-sentinel2:
+    ports: !reset []
+  redis-sentinel3:
+    ports: !reset []
+  mysql-container:
+    ports: !reset []
+  mongodb:
+    ports: !reset []
+  kafka-1:
+    ports: !reset []
+  kafka-ui:
+    ports: !reset []
