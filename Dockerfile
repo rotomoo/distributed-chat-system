@@ -4,11 +4,22 @@
 # ── 빌드 ────────────────────────────────────────────────────────
 FROM gradle:8.10.2-jdk17 AS builder
 
+# Node 는 프론트(vite)만 쓴다. 우분투 기본 패키지는 낡아서 vite 6 이 안 돈다.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY gradle gradle/
 COPY gradlew settings.gradle build.gradle /app/
 RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon --version > /dev/null
+
+# npm 의존성을 먼저 받아 둔다. package.json 이 그대로면 이 층을 다시 타지 않는다.
+COPY frontend/package.json frontend/package-lock.json frontend/
+RUN cd frontend && npm ci --no-audit --no-fund
 
 COPY . .
 # 테스트는 이미지 빌드에서 돌리지 않는다

@@ -11,3 +11,32 @@ dependencies {
     // redis
     implementation('org.springframework.boot:spring-boot-starter-data-redis')
 }
+// ── 프론트 ────────────────────────────────────────────────────────────────
+// 루트 frontend(vite) 빌드 산출물을 src/main/resources/static 으로 떨궈 게이트웨이 jar 에 싣는다.
+def frontendDir = rootProject.file('frontend')
+
+tasks.register('frontendInstall', Exec) {
+    onlyIf { frontendDir.exists() }
+    workingDir frontendDir
+    commandLine 'npm', 'install', '--no-audit', '--no-fund'
+    inputs.file(new File(frontendDir, 'package.json'))
+    outputs.dir(new File(frontendDir, 'node_modules'))
+}
+
+tasks.register('frontendBuild', Exec) {
+    onlyIf { frontendDir.exists() }
+    dependsOn 'frontendInstall'
+    workingDir frontendDir
+    commandLine 'npm', 'run', 'build'
+    inputs.dir(new File(frontendDir, 'src'))
+    inputs.file(new File(frontendDir, 'index.html'))
+    inputs.file(new File(frontendDir, 'vite.config.js'))
+    outputs.dir(file('src/main/resources/static'))
+}
+
+// npm 이 없는 곳에서도 서버는 빌드돼야 한다 — SKIP_FRONTEND=true 면 프론트만 건너뛴다.
+tasks.named('processResources') {
+    if (frontendDir.exists() && System.getenv('SKIP_FRONTEND') != 'true') {
+        dependsOn 'frontendBuild'
+    }
+}

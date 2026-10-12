@@ -3,10 +3,16 @@
 ## 사용법
 
 ```markdown
-1. docker-compose up --build
+1. docker compose up -d --build
 
 2. visit localhost:8080
 ```
+
+**프론트엔드 (frontend/ — Vite + React)**
+
+- 빌드 산출물은 api-gateway 의 `src/main/resources/static` 으로 떨어지고(git 미추적), 게이트웨이가 `:8080` 에서 화면과 API 를 같은 origin 으로 내보낸다.
+- `./gradlew build` 시 api-gateway 의 `processResources` 가 npm 빌드를 함께 돌린다. npm 이 없으면 `SKIP_FRONTEND=true` 로 건너뛴다.
+- 개발 중에는 `cd frontend && npm run dev` → `localhost:5173` (`/v1`, `/websocket` 은 `:8080` 게이트웨이로 프록시)
 
 ## 모듈 계층
 

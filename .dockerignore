@@ -4,3 +4,4 @@
 **/build
 **/src/main/generated
 image
+frontend/node_modules
