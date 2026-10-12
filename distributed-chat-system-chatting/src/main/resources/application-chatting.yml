@@ -12,6 +12,7 @@ eureka:
       defaultZone: http://localhost:7710/eureka/
 
   instance:
+    prefer-ip-address: true # 컨슈머가 Eureka 의 ip:port 로 Redis 키(chatServerUri:{ip}:{port})를 찾는다
     instance-id: ${spring.cloud.client.hostname}:${spring.application.instance_id:${random.value}}
 #      lease-renewal-interval-in-seconds: 5 # 하트비트가 수신되지 않으면 서비스 등록 해제 (default: 30s)
 #      lease-expiration-duration-in-seconds: 15 # 하트비트가 수신되지 않으면 서비스 등록 해제 (default: 90s)

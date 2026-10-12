@@ -12,6 +12,18 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
 
+  application:
+    name: kafka-consumer
+
+# 채팅 서버 목록만 받는다. 컨슈머는 다른 서비스가 찾아올 일이 없으므로 등록하지 않는다
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: true
+    registry-fetch-interval-seconds: 5 # 채팅 서버 증감을 빨리 반영 (default 30s)
+    service-url:
+      defaultZone: http://localhost:7710/eureka/
+
 ---
 
 spring:
@@ -27,6 +39,18 @@ spring:
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+
+  application:
+    name: kafka-consumer
+
+# 채팅 서버 목록만 받는다. 컨슈머는 다른 서비스가 찾아올 일이 없으므로 등록하지 않는다
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: true
+    registry-fetch-interval-seconds: 5 # 채팅 서버 증감을 빨리 반영 (default 30s)
+    service-url:
+      defaultZone: http://service-discovery:7710/eureka/
 
 ---
 
