@@ -256,15 +256,249 @@ distributed-chat-system
 - 분산 처리
     - 샤딩 키 : ChannelId
 
-## 채팅 메시지 흐름 (시퀀스 다이어그램 그려봐야됨)
+## 채팅 흐름
 
 **Client-Server 양방향 통신 [Web Socket 프로토콜](https://rotomoo.tistory.com/100)**
 
-<br>
+> 아래 그림은 현재 코드 기준이다. 채널 기능 전이라 모든 메시지는 전체 채널(`channelId = 0`)로 발행되고, 접속한 전체 유저가 받는다.
 
-## 세션 관리 (시퀀스 다이어그램 그려봐야됨)
+### 도메인 스토리 : 채팅 메시지가 상대에게 닿기까지
 
-<br>
+**스토리 1. 접속 준비 (① ~ ④)**
+
+```mermaid
+flowchart LR
+    sender(["👤 보내는 사람"])
+    receiver(["👤 받는 사람"])
+    clientApi[["🖥️ Client API"]]
+    session[/"🔑 세션"/]
+    chatA[["🖥️ 채팅 서버 A"]]
+    chatB[["🖥️ 채팅 서버 B"]]
+    conn[/"📍 접속 정보<br/>누가 어느 채팅 서버에"/]
+
+    sender -- "① 로그인한다" --> clientApi
+    clientApi -- "② 발급해 공유 저장소에 둔다" --> session
+    sender -- "③ 세션으로 접속한다" --> chatA
+    receiver -- "③ 세션으로 접속한다" --> chatB
+    chatA -- "④ 남긴다" --> conn
+    chatB -- "④ 남긴다" --> conn
+```
+
+**스토리 2. 메시지 전달 (⑤ ~ ⑫)**
+
+```mermaid
+flowchart LR
+    sender(["👤 보내는 사람"])
+    msg[/"✉️ 채팅 메시지"/]
+    chatA[["🖥️ 채팅 서버 A"]]
+    producer[["🖥️ Kafka Producer"]]
+    event[/"📨 메시지 이벤트"/]
+    consumer[["🖥️ Kafka Consumer"]]
+    history[/"🗂️ 메시지 이력"/]
+    conn[/"📍 접속 정보"/]
+    chatB[["🖥️ 채팅 서버 B"]]
+    receiver(["👤 받는 사람"])
+
+    sender -- "⑤ 보낸다" --> msg
+    msg -- "⑤ 에게" --> chatA
+    chatA -- "⑥ 발행을 맡긴다" --> producer
+    producer -- "⑦ 발행한다" --> event
+    event -- "⑧ 꺼낸다" --> consumer
+    consumer -- "⑨ 저장한다" --> history
+    consumer -- "⑩ 확인한다" --> conn
+    consumer -- "⑪ 전달한다" --> chatB
+    chatB -- "⑫ 보여준다" --> receiver
+```
+
+| # | 문장 |
+|---|---|
+| ① | 보내는 사람이 계정으로 **Client API** 에 로그인한다. |
+| ② | Client API 가 **세션**을 발급해 공유 저장소(Redis)에 둔다. 어느 서버든 같은 세션을 읽는다. |
+| ③ | 보내는 사람과 받는 사람이 세션으로 각자 **채팅 서버**에 접속한다. 두 사람이 서로 다른 서버에 붙을 수 있다. |
+| ④ | 채팅 서버가 **접속 정보**(누가 어느 채팅 서버에 붙었는지)를 Redis 에 남긴다. |
+| ⑤ | 보내는 사람이 **채팅 메시지**를 자기가 붙은 채팅 서버 A 에 보낸다. |
+| ⑥ | 채팅 서버 A 는 다른 서버를 직접 부르지 않고 **Kafka Producer** 에 발행을 맡긴다. |
+| ⑦ | Kafka Producer 가 **메시지 이벤트**를 Kafka 에 발행한다. |
+| ⑧ | **Kafka Consumer** 가 메시지 이벤트를 꺼낸다. Consumer 가 잠시 죽어 있어도 이벤트는 Kafka 에 남는다. |
+| ⑨ | Kafka Consumer 가 메시지를 **메시지 이력**(MongoDB)에 저장한다. |
+| ⑩ | Kafka Consumer 가 **접속 정보**로 받는 사람들이 어느 채팅 서버에 있는지 확인한다. |
+| ⑪ | Kafka Consumer 가 채팅 서버마다 한 번씩 메시지를 전달한다. |
+| ⑫ | 채팅 서버 B 가 받는 사람에게 메시지를 보여준다. (보낸 사람도 같은 경로로 돌아온 메시지를 본다) |
+
+### ① 로그인과 세션 공유
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant GW as API Gateway
+    participant API as Client API (n대)
+    participant DB as MySQL
+    participant RS as Redis (세션 저장소)
+
+    U->>GW: 로그인 POST /v1/public/api/auth/login
+    GW->>API: lb://CLIENT-API (Eureka 목록, round-robin)
+    API->>DB: 계정 조회
+    DB-->>API: User (BCrypt 비밀번호)
+    API->>API: 비밀번호 검증
+    API->>RS: 세션 저장 (sessions:{SESSION}, userId, 인증 정보)
+    Note over API,RS: 로그인 성공 시 세션 만료 30일로 연장
+    API-->>GW: 200 + Set-Cookie SESSION, userId
+    GW-->>U: 200
+
+    U->>GW: 내 정보 GET /v1/private/api/user/my-info (Cookie SESSION)
+    GW->>API: 다른 Client API 인스턴스로 가도 된다
+    API->>RS: 세션 조회
+    RS-->>API: userId, 인증 정보
+    API-->>U: 내 정보
+```
+
+### ② 웹소켓 접속 : 기존 채팅 서버 우선 라우팅
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant GW as API Gateway
+    participant RD as Redis
+    participant SD as Service Discovery
+    participant C1 as Chatting-1
+    participant C2 as Chatting-2
+
+    C1->>SD: 서비스 등록 (IP, Port, chatting)
+    C2->>SD: 서비스 등록 (IP, Port, chatting)
+    GW->>SD: CHATTING 인스턴스 목록 (주기적 갱신)
+    SD-->>GW: [Chatting-1, Chatting-2]
+
+    U->>GW: ws /websocket (Cookie SESSION, userId)
+    GW->>RD: GET {userId} (이전에 붙었던 채팅 서버)
+    alt 이전 접속 기록 있음
+        RD-->>GW: ws://Chatting-1
+        GW->>C1: 그 서버로 라우팅 (ChattingRoutingFilter)
+    else 첫 접속
+        RD-->>GW: 없음
+        GW->>C1: round-robin 으로 선택
+    end
+    C1->>RD: 세션 조회 (sessions:{SESSION})
+    alt 세션 없음
+        C1-->>U: 핸드셰이크 거절
+    else 로그인 상태
+        RD-->>C1: userId
+        C1->>RD: SET {userId} = ws://Chatting-1
+        C1->>RD: SADD chatServerUri:{Chatting-1} userId
+        C1->>C1: 웹소켓 세션을 메모리에 보관
+        C1-->>U: 연결 성공
+    end
+```
+
+> **알려진 한계** : 같은 유저가 두 기기(PC, 폰)로 같은 채팅 서버에 붙으면, 서버 메모리가 유저당 세션 1개라 나중 연결이 앞 연결을 덮어써서 앞 기기가 메시지를 못 받는다. 다중 기기 지원으로 수정 예정.
+
+### ③ 메시지 전송 → 저장 → 서버 간 전달
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor A as 보내는 사람
+    participant C1 as Chatting-1
+    participant P as Kafka Producer
+    participant K as Kafka
+    participant CS as Kafka Consumer
+    participant M as MongoDB
+    participant RD as Redis
+    participant C2 as Chatting-2
+    actor B as 받는 사람
+
+    A->>C1: 메시지 (웹소켓)
+    C1->>P: POST /publish/chat-send-message (protobuf, Feign + lb)
+    P->>K: chat-send-message 토픽에 발행 (key = channelId)
+    Note over P,K: 같은 채널은 같은 파티션 → 채널 안의 순서 보장
+    K-->>CS: 이벤트 소비 (group chat-group-1)
+    CS->>M: 메시지 이력 저장
+    M-->>CS: messageId
+    CS->>RD: SCAN chatServerUri:*
+    CS->>RD: SMEMBERS chatServerUri:{서버} (서버별 접속 유저)
+    par 채팅 서버마다 한 번씩
+        CS->>C1: POST /internal/chat/deliver (protobuf, 수신자 목록)
+        C1-->>A: 메시지 JSON (보낸 사람 화면에도 이 경로로 표시)
+    and
+        CS->>C2: POST /internal/chat/deliver (protobuf, 수신자 목록)
+        C2-->>B: 메시지 JSON
+    end
+    Note over CS,C2: 한 채팅 서버로 전달이 실패해도 나머지 서버 전달은 계속한다
+```
+
+### ④ 채팅 서버 장애 : client-side discovery
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant GW as API Gateway
+    participant SD as Service Discovery
+    participant RD as Redis
+    participant C1 as Chatting-1
+    participant C2 as Chatting-2
+
+    C1->>SD: 서비스 등록 (IP, Port, chatting)
+    C2->>SD: 서비스 등록 (IP, Port, chatting)
+    loop 주기적 Heartbeat
+        C1->>SD: Heartbeat
+        C2->>SD: Heartbeat
+    end
+    U->>C1: 웹소켓 연결 중 (Redis : {userId} = Chatting-1)
+
+    Note over C1: Chatting-1 종료
+    C1->>SD: 등록 해제 (cancel)
+    SD->>RD: SMEMBERS chatServerUri:{Chatting-1}
+    SD->>RD: DEL {userId} ... (Chatting-1 에 있던 유저들)
+    SD->>RD: DEL chatServerUri:{Chatting-1}
+    C1--xU: 웹소켓 끊김
+
+    GW->>SD: CHATTING 인스턴스 목록 (주기적 갱신)
+    SD-->>GW: [Chatting-2]
+    U->>GW: 재접속 ws /websocket
+    GW->>RD: GET {userId}
+    RD-->>GW: 없음 (정리됨)
+    GW->>C2: round-robin
+    C2->>RD: SET {userId} = Chatting-2, SADD chatServerUri:{Chatting-2}
+    C2-->>U: 연결 성공
+```
+
+> 로컬 검증 (2026-10-12) : Chatting-1 정상 종료 → Redis 정리 → 재접속 시 Chatting-2 로 연결 확인. 하트비트 누락(강제 종료) 경로는 아직 검증하지 않았다.
+
+### ⑤ Redis 장애 : Sentinel failover
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App as 앱 서비스 (Lettuce)
+    participant S as Sentinel x3
+    participant M as Redis master
+    participant R1 as Replica-1
+    participant R2 as Replica-2
+
+    loop 감시
+        S->>M: PING
+        S->>R1: PING
+        S->>R2: PING
+    end
+    M->>R1: 복제
+    M->>R2: 복제
+    App->>M: 쓰기 (세션, 접속 정보)
+    App->>R1: 읽기 (ReadFrom REPLICA_PREFERRED)
+
+    Note over M: master 다운
+    S->>S: 10초 응답 없음 → 3대 중 2대 합의 (quorum 2)
+    S->>R2: REPLICAOF NO ONE (새 master 로 승격)
+    S->>R1: REPLICAOF Replica-2
+    S-->>App: master 변경 알림 (+switch-master)
+    App->>R2: 쓰기 재개
+
+    Note over M: 예전 master 복구
+    S->>M: REPLICAOF Replica-2 (replica 로 합류)
+```
+
+> 로컬 검증 (2026-10-12) : master 다운 후 약 12초 만에 승격. 전환 순간 진행 중이던 요청 1건이 실패하고 이후 정상. 예전 master 는 복구 시 replica 로 합류.
 
 ## 캐시 계층
 
