@@ -62,9 +62,10 @@ spring:
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:7710/eureka/
+      defaultZone: http://service-discovery:7710/eureka/
 
   instance:
+    prefer-ip-address: true # 컨테이너 hostname 은 다른 컨테이너에서 resolve 되지 않으므로 IP 로 등록
 #    lease-renewal-interval-in-seconds: 5 # 하트비트가 수신되지 않으면 서비스 등록 해제 (default: 30s)
 #    lease-expiration-duration-in-seconds: 15 # 하트비트가 수신되지 않으면 서비스 등록 해제 (default: 90s)
 

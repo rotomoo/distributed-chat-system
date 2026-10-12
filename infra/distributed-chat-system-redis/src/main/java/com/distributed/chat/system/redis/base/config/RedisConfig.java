@@ -2,38 +2,33 @@ package com.distributed.chat.system.redis.base.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.lettuce.core.ReadFrom;
+import org.springframework.boot.autoconfigure.data.redis.LettuceClientConfigurationBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.redis.connection.RedisSentinelConfiguration;
-import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
-import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
+/**
+ * 접속 정보(standalone / sentinel)는 spring.data.redis.* 프로퍼티로 결정 (application-common.yml)
+ */
 @Configuration
 public class RedisConfig {
 
+    /**
+     * 읽기는 replica 우선, replica 가 없으면 master
+     */
     @Bean
-    public LettuceConnectionFactory lettuceConnectionFactory() {
-        LettuceClientConfiguration clientConfig = LettuceClientConfiguration.builder()
-            .readFrom(ReadFrom.REPLICA_PREFERRED)
-            .build();
-
-        RedisSentinelConfiguration sentinelConfig = new RedisSentinelConfiguration()
-            .master("mymaster")
-            .sentinel("redis-sentinel", 26379)
-            .sentinel("redis-sentinel2", 26380)
-            .sentinel("redis-sentinel3", 26381);
-
-        return new LettuceConnectionFactory(sentinelConfig, clientConfig);
-//        return new LettuceConnectionFactory();
+    public LettuceClientConfigurationBuilderCustomizer readFromReplicaCustomizer() {
+        return builder -> builder.readFrom(ReadFrom.REPLICA_PREFERRED);
     }
 
     @Bean
-    public RedisTemplate<String, Object> redisTemplate(ObjectMapper objectMapper) {
+    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory redisConnectionFactory,
+        ObjectMapper objectMapper) {
         final RedisTemplate<String, Object> template = new RedisTemplate<>();
-        template.setConnectionFactory(lettuceConnectionFactory());
+        template.setConnectionFactory(redisConnectionFactory);
 
         StringRedisSerializer stringRedisSerializer = new StringRedisSerializer();
         GenericJackson2JsonRedisSerializer jackson2JsonRedisSerializer = new GenericJackson2JsonRedisSerializer(

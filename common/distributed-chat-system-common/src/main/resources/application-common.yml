@@ -3,6 +3,11 @@ spring:
     activate:
       on-profile: default
 
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
 jasypt:
   encryptor:
     password: ${jasypt_encryptor_password}
@@ -13,6 +18,15 @@ spring:
   config:
     activate:
       on-profile: docker
+
+  data:
+    redis:
+      sentinel:
+        master: mymaster
+        nodes:
+          - redis-sentinel:26379
+          - redis-sentinel2:26379
+          - redis-sentinel3:26379
 
 jasypt:
   encryptor:
