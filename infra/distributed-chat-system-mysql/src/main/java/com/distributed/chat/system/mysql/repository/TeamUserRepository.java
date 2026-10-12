@@ -8,4 +8,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface TeamUserRepository extends JpaRepository<TeamUser, TeamUserPk> {
 
     List<TeamUser> findAllByTeamId(Long teamId);
+
+    List<TeamUser> findAllByTeamIdAndDeleteYnIsFalse(Long teamId);
+
+    List<TeamUser> findAllByUserIdAndDeleteYnIsFalse(Long userId);
+
+    boolean existsByTeamIdAndUserIdAndDeleteYnIsFalse(Long teamId, Long userId);
 }

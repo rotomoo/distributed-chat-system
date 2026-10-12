@@ -256,6 +256,27 @@ distributed-chat-system
 - 분산 처리
     - 샤딩 키 : ChannelId
 
+## 워크스페이스 / 채널 / DM (슬랙 구조)
+
+| 개념 | 저장 | 규칙 |
+|---|---|---|
+| 워크스페이스 | `team`, `team_user` | 만든 사람이 첫 멤버가 되고 `#general` 이 함께 생긴다. 가입하면 `#general` 에 자동 참여 |
+| 공개 채널 | `channel` (`channelType = PUBLIC`), `channel_user` | 워크스페이스 멤버는 목록을 볼 수 있고, **참여해야** 메시지를 받는다 |
+| DM | `channel` (`channelType = DM`, 이름 `dm:{작은 userId}:{큰 userId}`) | 같은 워크스페이스 멤버끼리. 두 사람의 DM 은 하나뿐이라 다시 열면 기존 채널 |
+| 채널 멤버 캐시 | Redis `channel:{channelId}:members` (Set) | 원본은 MySQL. DB 커밋 후에 넣는다. 채널 단위 전달(`SINTER`)과 발송 권한 확인에 쓴다 |
+
+| API | 설명 | 오류 |
+|---|---|---|
+| `POST /v1/private/api/team/team` | 워크스페이스 생성 (+ `#general`) | 2001 이미 있는 이름 |
+| `GET /v1/private/api/team/teams/me` | 내 워크스페이스 목록 | |
+| `POST /v1/private/api/team/{teamId}/join` | 워크스페이스 가입 (+ `#general` 참여) | 2002 없는 팀 |
+| `GET /v1/private/api/team/{teamId}/members` | 멤버 목록 | 2003 멤버 아님 |
+| `GET /v1/private/api/channel/channels?teamId=` | 공개 채널 목록 (`joined` 로 참여 여부) | 2003 |
+| `POST /v1/private/api/channel/channel?teamId=` | 공개 채널 생성 (만든 사람 참여) | 3001 이미 있는 이름, 2003 |
+| `POST /v1/private/api/channel/{channelId}/join` | 공개 채널 참여 | 3002 없는 채널, 2003 |
+| `GET /v1/private/api/channel/dms?teamId=` | 내 DM 목록 | 2003 |
+| `POST /v1/private/api/channel/dm?teamId=` | DM 열기 (없으면 생성) | 3004 자기 자신, 2003 상대가 멤버 아님 |
+
 ## 채팅 흐름
 
 **Client-Server 양방향 통신 [Web Socket 프로토콜](https://rotomoo.tistory.com/100)**

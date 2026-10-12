@@ -4,6 +4,7 @@ import com.distributed.chat.system.client.api.web.dto.team.CreateTeamRequestDto;
 import com.distributed.chat.system.client.api.web.dto.team.GetTeamsRequestDto;
 import com.distributed.chat.system.client.api.web.dto.team.GetTeamsResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -74,4 +75,13 @@ public interface TeamControllerSpec {
         }
     )
     ResponseEntity createTeam(CreateTeamRequestDto createTeamsRequestDto);
+
+    @Operation(summary = "내 팀 목록 조회", description = "내가 멤버인 팀(워크스페이스) 목록")
+    ResponseEntity getMyTeams();
+
+    @Operation(summary = "팀 가입", description = "팀 멤버가 되고 #general 채널에 참여한다. 이미 멤버면 그대로 성공 (2002 없는 팀)")
+    ResponseEntity joinTeam(@Parameter(description = "팀 ID") Long teamId);
+
+    @Operation(summary = "팀 멤버 목록 조회", description = "DM 상대 고르기 (2003 팀 멤버가 아님)")
+    ResponseEntity getTeamMembers(@Parameter(description = "팀 ID") Long teamId);
 }

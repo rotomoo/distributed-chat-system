@@ -13,7 +13,7 @@ permissions:
 jobs:
   build-test:
     runs-on: ubuntu-latest
-    # 통합 테스트(default 프로필)가 localhost 의 mysql / mongodb 를 쓴다.
+    # 통합 테스트(default 프로필)가 localhost 의 mysql / mongodb / redis 를 쓴다.
     # 잡이 끝나면 사라지는 일회용 컨테이너라 아래 값들은 비밀이 아니다 (운영 값은 서버의 .env).
     services:
       mysql:
@@ -30,6 +30,10 @@ jobs:
       mongodb:
         image: mongo:7.0
         ports: ["27017:27017"]
+      # client-api 통합 테스트의 세션 저장소
+      redis:
+        image: redis:6.2
+        ports: ["6379:6379"]
     env:
       DB_USERNAME: chat
       DB_PASSWORD: ci-only

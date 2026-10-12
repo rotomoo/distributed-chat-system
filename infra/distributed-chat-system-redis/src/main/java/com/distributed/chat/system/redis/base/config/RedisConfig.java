@@ -2,6 +2,7 @@ package com.distributed.chat.system.redis.base.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.lettuce.core.ReadFrom;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.data.redis.LettuceClientConfigurationBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,9 +18,12 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 public class RedisConfig {
 
     /**
-     * 읽기는 replica 우선, replica 가 없으면 master
+     * 읽기는 replica 우선, replica 가 없으면 master.
+     * docker 프로필(sentinel + replica 가 같은 네트워크)에서만 켠다. 호스트(IDE, 테스트)에서는 replica 의 컨테이너 내부 IP 에
+     * 닿을 수 없어서 replica 읽기를 켜면 연결이 실패한다.
      */
     @Bean
+    @ConditionalOnProperty(name = "chat.redis.read-from-replica", havingValue = "true")
     public LettuceClientConfigurationBuilderCustomizer readFromReplicaCustomizer() {
         return builder -> builder.readFrom(ReadFrom.REPLICA_PREFERRED);
     }

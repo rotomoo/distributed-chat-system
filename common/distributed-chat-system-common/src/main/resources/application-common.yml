@@ -28,6 +28,10 @@ spring:
           - redis-sentinel2:26379
           - redis-sentinel3:26379
 
+chat:
+  redis:
+    read-from-replica: true # replica 가 같은 docker 네트워크에 있을 때만 (RedisConfig 참고)
+
 jasypt:
   encryptor:
     password: ${jasypt_encryptor_password}

@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -48,6 +49,47 @@ public class TeamController implements TeamControllerSpec {
     @PostMapping("/team")
     public ResponseEntity<?> createTeam(@RequestBody @Valid CreateTeamRequestDto createTeamRequestDto) {
         ResponseData responseData = teamService.createTeam(createTeamRequestDto);
+
+        return ResponseEntity.ok(responseData);
+    }
+
+    /**
+     * 내가 속한 팀 목록
+     *
+     * @return
+     */
+    @Override
+    @GetMapping("/teams/me")
+    public ResponseEntity<?> getMyTeams() {
+        ResponseData responseData = teamService.getMyTeams();
+
+        return ResponseEntity.ok(responseData);
+    }
+
+    /**
+     * 팀 가입
+     *
+     * @param teamId
+     * @return
+     */
+    @Override
+    @PostMapping("/{teamId}/join")
+    public ResponseEntity<?> joinTeam(@PathVariable Long teamId) {
+        ResponseData responseData = teamService.joinTeam(teamId);
+
+        return ResponseEntity.ok(responseData);
+    }
+
+    /**
+     * 팀 멤버 목록
+     *
+     * @param teamId
+     * @return
+     */
+    @Override
+    @GetMapping("/{teamId}/members")
+    public ResponseEntity<?> getTeamMembers(@PathVariable Long teamId) {
+        ResponseData responseData = teamService.getTeamMembers(teamId);
 
         return ResponseEntity.ok(responseData);
     }
