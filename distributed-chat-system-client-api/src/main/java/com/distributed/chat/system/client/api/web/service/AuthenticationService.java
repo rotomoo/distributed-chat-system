@@ -1,12 +1,12 @@
 package com.distributed.chat.system.client.api.web.service;
 
 import com.distributed.chat.system.client.api.web.dto.authentication.SignupRequestDto;
+import com.distributed.chat.system.client.api.web.dto.authentication.SignupResponseDto;
 import com.distributed.chat.system.common.exception.ApiException;
 import com.distributed.chat.system.common.exception.ErrorCode;
 import com.distributed.chat.system.common.response.ResponseData;
 import com.distributed.chat.system.mysql.entity.User;
 import com.distributed.chat.system.mysql.repository.UserRepository;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -36,7 +36,7 @@ public class AuthenticationService {
 
         User user = saveUser(signupRequestDto);
 
-        return ResponseData.success("회원가입", Map.of("user", user));
+        return ResponseData.success("회원가입", new SignupResponseDto(user));
     }
 
     public User saveUser(SignupRequestDto signupRequestDto) {

@@ -17,7 +17,7 @@ export default function AuthForm({ onLogin }) {
     try {
       if (tab === 'signup') {
         const data = await signup(account, password)
-        setMessage({ text: `회원가입 성공! User ID: ${data.user?.id}` })
+        setMessage({ text: `회원가입 성공! User ID: ${data.userId}` })
         setTab('login')
       } else {
         await login(account, password)

@@ -8,12 +8,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.distributed.chat.system.client.api.web.dto.authentication.SignupRequestDto;
+import com.distributed.chat.system.client.api.web.dto.authentication.SignupResponseDto;
 import com.distributed.chat.system.common.exception.ApiException;
 import com.distributed.chat.system.common.exception.ErrorCode;
 import com.distributed.chat.system.common.response.ResponseData;
 import com.distributed.chat.system.mysql.entity.User;
 import com.distributed.chat.system.mysql.repository.UserRepository;
-import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -54,16 +54,17 @@ class AuthenticationServiceUnitTest {
             .thenReturn(new User(1L, "testName", "testAccount", "encodedPassword", false));
 
         // act
-        ResponseData<Map<String, User>> response = authenticationService.signup(testDto);
+        ResponseData<SignupResponseDto> response = authenticationService.signup(testDto);
 
         // assert
         assertThat(response.isSuccess()).isTrue();
         assertThat(response.getCode()).isEqualTo(0);
         assertThat(response.getMsg()).isEqualTo("회원가입");
 
-        User user = response.getData().get("user");
-        assertThat(user.getAccount()).isEqualTo("testAccount");
-        assertThat(user.getPassword()).isEqualTo("encodedPassword");
+        // 응답에는 비밀번호(해시)가 없고 식별 정보만 담긴다
+        assertThat(response.getData()).hasOnlyFields("userId", "account", "userName");
+        assertThat(response.getData().getUserId()).isEqualTo(1L);
+        assertThat(response.getData().getAccount()).isEqualTo("testAccount");
         verify(userRepository, times(1)).save(any(User.class));
     }
 
