@@ -195,8 +195,12 @@ label {
   color: #999;
 }
 
-.status.on {
+.status.open {
   color: #449d44;
+}
+
+.status.connecting {
+  color: #f0ad4e;
 }
 
 .messages {

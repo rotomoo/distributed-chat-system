@@ -1,30 +1,54 @@
 import { useEffect, useRef, useState } from 'react'
 import { webSocketUrl } from '../api.js'
 
+const STATUS_LABEL = {
+  idle: '연결 안 됨',
+  connecting: '연결 중…',
+  open: '연결됨',
+}
+
 export default function ChatRoom({ myUserId }) {
   const webSocketRef = useRef(null)
   const messagesRef = useRef(null)
-  const [connected, setConnected] = useState(false)
+  // 같은 메시지가 두 번 오면(소켓이 둘이었던 경우 등) 한 번만 그린다
+  const seenMessageIdsRef = useRef(new Set())
+  const [status, setStatus] = useState('idle')
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
 
   const connect = () => {
+    // 더블클릭 방지 : 이미 연결 중이거나 연결돼 있으면 새 소켓을 만들지 않는다
+    const current = webSocketRef.current
+    if (current && (current.readyState === WebSocket.CONNECTING || current.readyState === WebSocket.OPEN)) {
+      return
+    }
+
     const webSocket = new WebSocket(webSocketUrl())
-    webSocket.onopen = () => setConnected(true)
-    webSocket.onclose = () => setConnected(false)
+    webSocketRef.current = webSocket
+    setStatus('connecting')
+    setMessages([])
+    seenMessageIdsRef.current = new Set()
+
+    webSocket.onopen = () => setStatus('open')
+    webSocket.onclose = () => {
+      // 끊긴 소켓이 지금 소켓일 때만 상태를 바꾼다 (이전 소켓의 늦은 close 이벤트 무시)
+      if (webSocketRef.current === webSocket) {
+        webSocketRef.current = null
+        setStatus('idle')
+      }
+    }
     // 컨슈머가 채팅 서버를 통해 전달한 메시지 : {messageId, channelId, sendUserId, message, publishDt}
     // 내가 보낸 메시지도 카프카를 거쳐 돌아오므로 여기서 같이 그린다
     webSocket.onmessage = (event) => {
       const chatMessage = JSON.parse(event.data)
+      if (seenMessageIdsRef.current.has(chatMessage.messageId)) return
+      seenMessageIdsRef.current.add(chatMessage.messageId)
       setMessages((prev) => [...prev, chatMessage])
     }
-    webSocketRef.current = webSocket
-    setMessages([])
   }
 
   const disconnect = () => {
     webSocketRef.current?.close()
-    webSocketRef.current = null
   }
 
   // 화면을 벗어나면(로그아웃 등) 연결을 정리한다
@@ -43,12 +67,14 @@ export default function ChatRoom({ myUserId }) {
     setInput('')
   }
 
+  const connected = status === 'open'
+
   return (
     <section className="panel chat">
       <div className="toolbar">
-        <button className="btn btn-primary" onClick={connect} disabled={connected}>Connect</button>
-        <button className="btn btn-danger" onClick={disconnect} disabled={!connected}>Disconnect</button>
-        <span className={`status ${connected ? 'on' : ''}`}>{connected ? '연결됨' : '연결 안 됨'}</span>
+        <button className="btn btn-primary" onClick={connect} disabled={status !== 'idle'}>Connect</button>
+        <button className="btn btn-danger" onClick={disconnect} disabled={status === 'idle'}>Disconnect</button>
+        <span className={`status ${status}`}>{STATUS_LABEL[status]}</span>
       </div>
 
       <div className="messages" ref={messagesRef}>
