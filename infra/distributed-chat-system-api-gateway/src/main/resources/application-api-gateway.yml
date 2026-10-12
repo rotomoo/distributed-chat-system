@@ -10,6 +10,9 @@ spring:
     web-application-type: reactive
 
   cloud:
+    loadbalancer:
+      cache:
+        ttl: 5s # Eureka 목록 위에 한 번 더 캐시하는 시간 (default 35s)
     gateway:
       routes:
         - id: client-api
@@ -25,6 +28,7 @@ spring:
 
 eureka:
   client:
+    registry-fetch-interval-seconds: 5 # 채팅 서버가 죽으면 빨리 라우팅 대상에서 빼기 위해 (default 30s)
     service-url:
       defaultZone: http://localhost:7710/eureka/
 
@@ -46,6 +50,9 @@ spring:
     web-application-type: reactive
 
   cloud:
+    loadbalancer:
+      cache:
+        ttl: 5s # Eureka 목록 위에 한 번 더 캐시하는 시간 (default 35s)
     gateway:
       routes:
         - id: client-api
@@ -61,6 +68,7 @@ spring:
 
 eureka:
   client:
+    registry-fetch-interval-seconds: 5 # 채팅 서버가 죽으면 빨리 라우팅 대상에서 빼기 위해 (default 30s)
     service-url:
       defaultZone: http://service-discovery:7710/eureka/
 

@@ -29,7 +29,8 @@ export default function ChatRoom({ myUserId }) {
     setMessages([])
     seenMessageIdsRef.current = new Set()
 
-    webSocket.onopen = () => setStatus('open')
+    // 101(onopen)만으로는 채팅 서버까지 붙었는지 알 수 없다 (게이트웨이가 먼저 응답한다).
+    // 채팅 서버가 접속 정보를 기록하고 보내는 connected 신호를 받아야 연결됨으로 본다
     webSocket.onclose = () => {
       // 끊긴 소켓이 지금 소켓일 때만 상태를 바꾼다 (이전 소켓의 늦은 close 이벤트 무시)
       if (webSocketRef.current === webSocket) {
@@ -37,11 +38,16 @@ export default function ChatRoom({ myUserId }) {
         setStatus('idle')
       }
     }
-    // 컨슈머가 채팅 서버를 통해 전달한 메시지 : {messageId, channelId, sendUserId, message, publishDt}
-    // 내가 보낸 메시지도 카프카를 거쳐 돌아오므로 여기서 같이 그린다
+    // connected : 채팅 서버 준비 완료
+    // message   : 컨슈머가 채팅 서버를 통해 전달한 메시지 {messageId, channelId, sendUserId, message, publishDt}
+    //             내가 보낸 메시지도 카프카를 거쳐 돌아오므로 여기서 같이 그린다
     webSocket.onmessage = (event) => {
       const chatMessage = JSON.parse(event.data)
-      if (seenMessageIdsRef.current.has(chatMessage.messageId)) return
+      if (chatMessage.type === 'connected') {
+        setStatus('open')
+        return
+      }
+      if (chatMessage.type !== 'message' || seenMessageIdsRef.current.has(chatMessage.messageId)) return
       seenMessageIdsRef.current.add(chatMessage.messageId)
       setMessages((prev) => [...prev, chatMessage])
     }

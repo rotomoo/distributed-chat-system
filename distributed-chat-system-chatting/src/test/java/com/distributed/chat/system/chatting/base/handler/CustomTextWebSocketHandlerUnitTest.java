@@ -3,8 +3,10 @@ package com.distributed.chat.system.chatting.base.handler;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -33,6 +35,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -94,8 +97,8 @@ class CustomTextWebSocketHandlerUnitTest {
         handler.deliver(delivery("hello", 5L));
 
         // assert
-        verify(pc).sendMessage(any(TextMessage.class));
-        verify(phone).sendMessage(any(TextMessage.class));
+        verify(pc).sendMessage(chatMessage());
+        verify(phone).sendMessage(chatMessage());
         assertThat(handler.getSessions(USER_ID)).hasSize(2);
     }
 
@@ -113,8 +116,8 @@ class CustomTextWebSocketHandlerUnitTest {
         handler.deliver(delivery("hello", 5L));
 
         // assert
-        verify(pc).sendMessage(any(TextMessage.class));
-        verify(phone, never()).sendMessage(any(TextMessage.class));
+        verify(pc).sendMessage(chatMessage());
+        verify(phone, never()).sendMessage(chatMessage());
         verify(setOperations, never()).remove(anyString(), eq(USER_ID));
     }
 
@@ -150,8 +153,8 @@ class CustomTextWebSocketHandlerUnitTest {
         handler.deliver(delivery("hello", 5L));
 
         // assert
-        verify(closed, never()).sendMessage(any(TextMessage.class));
-        verify(otherUser, never()).sendMessage(any(TextMessage.class));
+        verify(closed, never()).sendMessage(chatMessage());
+        verify(otherUser, never()).sendMessage(chatMessage());
     }
 
     @Test
@@ -215,6 +218,26 @@ class CustomTextWebSocketHandlerUnitTest {
             assertThat(handler.getSessions(USER_ID)).hasSize(1);
             assertThat(redisMembers).as("round %d", round).contains(USER_ID);
         }
+    }
+
+    @Test
+    @DisplayName("success case : 접속 정보를 Redis 에 기록한 다음에 준비 완료 신호를 보낸다")
+    void 접속_정보를_Redis_에_기록한_다음에_준비_완료_신호를_보낸다() throws Exception {
+        // arrange
+        WebSocketSession pc = session(USER_ID);
+
+        // act
+        handler.afterConnectionEstablished(pc);
+
+        // assert : 클라이언트가 신호를 받은 시점에는 이미 전달 대상(Redis)에 들어가 있어야 한다
+        InOrder order = inOrder(setOperations, pc);
+        order.verify(setOperations).add(anyString(), eq(USER_ID));
+        order.verify(pc).sendMessage(argThat(message ->
+            message instanceof TextMessage text && text.getPayload().contains("\"type\":\"connected\"")));
+    }
+
+    private static TextMessage chatMessage() {
+        return argThat((TextMessage message) -> message.getPayload().contains("\"type\":\"message\""));
     }
 
     private WebSocketSession session(String userId) {

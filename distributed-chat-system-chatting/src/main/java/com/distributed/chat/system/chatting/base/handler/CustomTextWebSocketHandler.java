@@ -69,6 +69,13 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
             redisTemplate.opsForSet().add(CHAT_SERVER_KEY_PREFIX + chatServerUri, userId);
             return userSessions;
         });
+
+        // 접속 정보 기록까지 끝났음을 알린다. 클라이언트는 이 신호를 받아야 "연결됨"으로 본다.
+        // (api-gateway 는 채팅 서버에 붙기 전에 클라이언트에 101 을 먼저 보내므로, 101 만으로는 실제 연결을 보장하지 못한다)
+        concurrentSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of(
+            "type", "connected",
+            "chatServer", chatServerUri
+        ))));
     }
 
     @Override
@@ -116,6 +123,7 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         TextMessage textMessage;
         try {
             textMessage = new TextMessage(objectMapper.writeValueAsString(Map.of(
+                "type", "message",
                 "messageId", delivery.getMessageId(),
                 "channelId", chatMessage.getChannelId(),
                 "sendUserId", chatMessage.getSendUserId(),
