@@ -276,12 +276,13 @@ distributed-chat-system
 | `POST /v1/private/api/channel/{channelId}/join` | 공개 채널 참여 | 3002 없는 채널, 2003 |
 | `GET /v1/private/api/channel/dms?teamId=` | 내 DM 목록 | 2003 |
 | `POST /v1/private/api/channel/dm?teamId=` | DM 열기 (없으면 생성) | 3004 자기 자신, 2003 상대가 멤버 아님 |
+| `GET /v1/private/api/channel/{channelId}/messages?before=&size=20` | 이전 메시지 (오래된 순, 최대 100) | 3003 채널 멤버 아님, 4001 잘못된 before |
 
 ## 채팅 흐름
 
 **Client-Server 양방향 통신 [Web Socket 프로토콜](https://rotomoo.tistory.com/100)**
 
-> 아래 그림은 현재 코드 기준이다. 채널 기능 전이라 모든 메시지는 전체 채널(`channelId = 0`)로 발행되고, 접속한 전체 유저가 받는다.
+> 아래 그림은 현재 코드 기준이다. 메시지는 채널(공개 채널, DM) 단위로 발행되고 그 채널 멤버 중 접속한 사람만 받는다.
 
 ### 도메인 스토리 : 채팅 메시지가 상대에게 닿기까지
 
@@ -406,47 +407,59 @@ sequenceDiagram
     else 로그인 상태
         RD-->>C1: userId
         C1->>RD: SET {userId} = ws://Chatting-1
+        C1->>C1: 메모리에 기기(소켓) 추가 (userId → 소켓 여러 개)
+        C1->>RD: SET {userId} = ws://Chatting-1
         C1->>RD: SADD chatServerUri:{Chatting-1} userId
-        C1->>C1: 웹소켓 세션을 메모리에 보관
-        C1-->>U: 연결 성공
+        C1-->>U: {type: connected} — 이 신호를 받아야 연결됨
     end
 ```
 
-> **알려진 한계** : 같은 유저가 두 기기(PC, 폰)로 같은 채팅 서버에 붙으면, 서버 메모리가 유저당 세션 1개라 나중 연결이 앞 연결을 덮어써서 앞 기기가 메시지를 못 받는다. 다중 기기 지원으로 수정 예정.
+> - api-gateway 는 채팅 서버에 붙기 **전에** 브라우저에 101 을 먼저 보낸다. 그래서 브라우저는 101 이 아니라 채팅 서버가 접속 정보를 기록한 뒤 보내는 `connected` 를 받아야 연결됨으로 본다.
+> - 같은 유저가 여러 기기로 접속할 수 있다. 기기 하나가 끊기면 그 소켓만 빠지고, 이 서버에서 그 유저의 **마지막** 기기가 끊길 때만 `SREM chatServerUri:{서버}` 한다.
 
-### ③ 메시지 전송 → 저장 → 서버 간 전달
+### ③ 메시지 전송 → 저장 → 채널 멤버에게 전달
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor A as 보내는 사람
     participant C1 as Chatting-1
+    participant RD as Redis
     participant P as Kafka Producer
     participant K as Kafka
     participant CS as Kafka Consumer
     participant M as MongoDB
-    participant RD as Redis
     participant C2 as Chatting-2
-    actor B as 받는 사람
+    actor B as 받는 사람 (같은 채널)
 
-    A->>C1: 메시지 (웹소켓)
-    C1->>P: POST /publish/chat-send-message (protobuf, Feign + lb)
-    P->>K: chat-send-message 토픽에 발행 (key = channelId)
-    Note over P,K: 같은 채널은 같은 파티션 → 채널 안의 순서 보장
-    K-->>CS: 이벤트 소비 (group chat-group-1)
-    CS->>M: 메시지 이력 저장
-    M-->>CS: messageId
-    CS->>RD: SCAN chatServerUri:*
-    CS->>RD: SMEMBERS chatServerUri:{서버} (서버별 접속 유저)
-    par 채팅 서버마다 한 번씩
-        CS->>C1: POST /internal/chat/deliver (protobuf, 수신자 목록)
-        C1-->>A: 메시지 JSON (보낸 사람 화면에도 이 경로로 표시)
-    and
-        CS->>C2: POST /internal/chat/deliver (protobuf, 수신자 목록)
-        C2-->>B: 메시지 JSON
+    A->>C1: {type: message, channelId, message} (웹소켓)
+    Note over C1: handleMessage = 받기 + 검사 + 발행
+    C1->>RD: SISMEMBER channel:{channelId}:members userId
+    alt 채널 멤버가 아님 / 형식 오류
+        C1-->>A: {type: error, code} (발행하지 않음)
+    else 채널 멤버
+        C1->>P: POST /publish/chat-send-message (protobuf, Feign + lb)
+        P->>K: chat-send-message 토픽에 발행 (key = channelId)
+        Note over P,K: 같은 채널은 같은 파티션 → 채널 안의 순서 보장
+        K-->>CS: 이벤트 소비
+        CS->>M: 메시지 이력 저장 → messageId
+        Note over CS: 채팅 서버 목록 = Eureka (메모리 캐시)
+        par 채팅 서버마다 한 번씩
+            CS->>RD: SINTER chatServerUri:{Chatting-1} channel:{channelId}:members
+            CS->>C1: POST /internal/chat/deliver (protobuf, 그 서버의 수신자 리스트)
+            Note over C1: deliver = 수신자 리스트의 모든 기기에 sendMessage
+            C1-->>A: {type: message, ...} (보낸 사람 화면도 이 경로로 표시)
+        and
+            CS->>RD: SINTER chatServerUri:{Chatting-2} channel:{channelId}:members
+            CS->>C2: POST /internal/chat/deliver
+            C2-->>B: {type: message, ...}
+        end
     end
-    Note over CS,C2: 한 채팅 서버로 전달이 실패해도 나머지 서버 전달은 계속한다
 ```
+
+> - 채널 멤버 캐시(`channel:{id}:members`)가 Redis 에 없으면 채팅 서버가 client-api 내부 API(`/internal/channel/{id}/members`)로 MySQL 기준으로 다시 채운다.
+> - **이전 메시지**는 채널을 열 때 `GET /v1/private/api/channel/{id}/messages` 로 최근 20개를 MongoDB 에서 가져오고, 위로 스크롤하면 `before={가장 오래된 messageId}` 로 이어서 가져온다. **이후 메시지**는 위 웹소켓 흐름으로 받는다.
+> - 채팅 서버 목록은 Redis `SCAN chatServerUri:*` 대신 Eureka 를 쓴다. SCAN 은 패턴이 있어도 Redis 키 전체를 훑는다 (키 20만 개에서 서버 키 2개를 찾는 데 SCAN 1,993번 / 약 84ms, `SMEMBERS` 한 번은 21µs).
 
 ### ④ 채팅 서버 장애 : client-side discovery
 

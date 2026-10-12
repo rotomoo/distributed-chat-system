@@ -147,6 +147,17 @@ public class ChannelService {
     }
 
     /**
+     * 채널 멤버 캐시를 MySQL 기준으로 다시 채우고 멤버 ID 를 돌려준다 (채팅 서버가 캐시 키가 없을 때 호출)
+     */
+    public List<Long> refreshMemberCache(Long channelId) {
+        List<Long> memberIds = channelUserRepository.findAllByChannelIdAndDeleteYnIsFalse(channelId).stream()
+            .map(ChannelUser::getUserId)
+            .toList();
+        channelMemberCache.replace(channelId, memberIds);
+        return memberIds;
+    }
+
+    /**
      * 채널 멤버로 추가 (이미 멤버면 DB 는 그대로). MySQL 이 원본, Redis 는 전달용 캐시
      */
     public void join(Long channelId, Long userId) {

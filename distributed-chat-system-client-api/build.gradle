@@ -2,6 +2,7 @@ dependencies {
     implementation project(':common:distributed-chat-system-common')
     implementation project(':infra:distributed-chat-system-mysql')
     implementation project(':infra:distributed-chat-system-redis')
+    implementation project(':infra:distributed-chat-system-mongodb')
 
     // security
     implementation('org.springframework.boot:spring-boot-starter-security')
@@ -11,8 +12,13 @@ dependencies {
     compileOnly('org.springframework.boot:spring-boot-starter-data-jpa')
     testImplementation('org.springframework.boot:spring-boot-starter-data-jpa')
 
+    // mongodb (채널 메시지 이력 조회)
+    compileOnly('org.springframework.boot:spring-boot-starter-data-mongodb')
+    testImplementation('org.springframework.boot:spring-boot-starter-data-mongodb')
+
     // redis
     compileOnly('org.springframework.boot:spring-boot-starter-data-redis')
+    testImplementation('org.springframework.boot:spring-boot-starter-data-redis')
 
     // eureka-client
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'

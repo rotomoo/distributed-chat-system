@@ -1,7 +1,10 @@
 package com.distributed.chat.system.chatting.base.handler;
 
+import com.distributed.chat.system.chatting.web.controller.feign.ClientApiClient;
 import com.distributed.chat.system.chatting.web.controller.feign.KafkaProducerClient;
+import com.distributed.chat.system.common.exception.ErrorCode;
 import com.distributed.chat.system.common.util.NetworkUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.util.Collection;
@@ -36,15 +39,16 @@ import protobuf.EdaChatMessage.ChatMessageDelivery;
 @RequiredArgsConstructor
 public class CustomTextWebSocketHandler extends TextWebSocketHandler {
 
-    // 채널 기능 적용 전까지 모든 메시지는 전체 채널(0)로 발행
-    private static final long DEFAULT_CHANNEL_ID = 0L;
+    private static final int MAX_MESSAGE_LENGTH = 4000;
     private static final int SEND_TIME_LIMIT_MS = 5000;
     private static final int SEND_BUFFER_SIZE_LIMIT = 512 * 1024;
     private static final String CHAT_SERVER_KEY_PREFIX = "chatServerUri:";
+    private static final String CHANNEL_MEMBERS_KEY_PREFIX = "channel:";
 
     private final RedisTemplate redisTemplate;
     private final Map<String, Map<String, WebSocketSession>> webSocketSessionMap = new ConcurrentHashMap<>();
     private final KafkaProducerClient kafkaProducerClient;
+    private final ClientApiClient clientApiClient;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -78,20 +82,67 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         ))));
     }
 
+    /**
+     * 클라이언트 → 서버 : {"type": "message", "channelId": 1, "message": "안녕하세요"}
+     * 채널 멤버가 아니거나 형식이 틀리면 보낸 사람에게 {"type": "error", ...} 를 돌려주고 발행하지 않는다
+     */
     @Override
     public void handleMessage(WebSocketSession webSocketSession, WebSocketMessage<?> message) throws Exception {
-        log.info("{} sent {}", webSocketSession.getId(), message.getPayload());
-
         String userId = (String) webSocketSession.getAttributes().get("userId");
+
+        JsonNode payload;
+        try {
+            payload = objectMapper.readTree(message.getPayload().toString());
+        } catch (IOException e) {
+            sendError(webSocketSession, ErrorCode.INVALID_CHAT_MESSAGE);
+            return;
+        }
+        String text = payload.path("message").asText("");
+        long channelId = payload.path("channelId").asLong(0);
+        if (!"message".equals(payload.path("type").asText()) || channelId <= 0
+            || text.isBlank() || text.length() > MAX_MESSAGE_LENGTH) {
+            sendError(webSocketSession, ErrorCode.INVALID_CHAT_MESSAGE);
+            return;
+        }
+
+        if (!isChannelMember(channelId, userId)) {
+            sendError(webSocketSession, ErrorCode.NOT_CHANNEL_MEMBER);
+            return;
+        }
+        log.info("{} sent to channel {}", webSocketSession.getId(), channelId);
 
         ChatMessage chatMessage = ChatMessage.newBuilder()
             .setSendUserId(Long.parseLong(userId))
-            .setChannelId(DEFAULT_CHANNEL_ID)
-            .setMessage(message.getPayload().toString())
+            .setChannelId(channelId)
+            .setMessage(text)
             .setPublishDt(System.currentTimeMillis())
             .build();
 
         kafkaProducerClient.publishChatSendMessage(chatMessage);
+    }
+
+    /**
+     * Redis channel:{id}:members 로 확인. 키가 없으면(Redis 유실 등) client-api 에 MySQL 기준으로 다시 채워 달라고 한다
+     */
+    private boolean isChannelMember(long channelId, String userId) {
+        String channelKey = CHANNEL_MEMBERS_KEY_PREFIX + channelId + ":members";
+        if (!Boolean.TRUE.equals(redisTemplate.hasKey(channelKey))) {
+            return clientApiClient.refreshChannelMembers(channelId).contains(Long.parseLong(userId));
+        }
+        return Boolean.TRUE.equals(redisTemplate.opsForSet().isMember(channelKey, userId));
+    }
+
+    private void sendError(WebSocketSession webSocketSession, ErrorCode errorCode) throws IOException {
+        String userId = (String) webSocketSession.getAttributes().get("userId");
+        WebSocketSession concurrentSession = getSessions(userId).stream()
+            .filter(session -> session.getId().equals(webSocketSession.getId()))
+            .findFirst()
+            .orElse(webSocketSession);
+        concurrentSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of(
+            "type", "error",
+            "code", errorCode.getCustomCode(),
+            "message", errorCode.getMsg()
+        ))));
     }
 
     @Override

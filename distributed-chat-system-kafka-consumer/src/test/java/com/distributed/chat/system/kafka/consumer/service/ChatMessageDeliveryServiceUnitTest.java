@@ -49,7 +49,7 @@ class ChatMessageDeliveryServiceUnitTest {
 
     private final ChatMessage chatMessage = ChatMessage.newBuilder()
         .setSendUserId(5L)
-        .setChannelId(0L)
+        .setChannelId(7L)
         .setMessage("hello")
         .setPublishDt(1_700_000_000_000L)
         .build();
@@ -62,12 +62,12 @@ class ChatMessageDeliveryServiceUnitTest {
     }
 
     @Test
-    @DisplayName("success case : Eureka 의 채팅 서버마다 그 서버 접속자에게 한 번씩 전달한다")
-    void 채팅_서버마다_그_서버_접속자에게_한_번씩_전달한다() {
+    @DisplayName("success case : 채팅 서버마다 그 서버 접속자 중 채널 멤버에게만 한 번씩 전달한다")
+    void 채팅_서버마다_그_서버_접속자_중_채널_멤버에게만_한_번씩_전달한다() {
         // arrange
         givenChatServers(chatServer("10.0.0.1", 1111), chatServer("10.0.0.2", 2222));
-        when(setOperations.members("chatServerUri:10.0.0.1:1111")).thenReturn(Set.of("5", "17"));
-        when(setOperations.members("chatServerUri:10.0.0.2:2222")).thenReturn(Set.of("9"));
+        when(setOperations.intersect("chatServerUri:10.0.0.1:1111", "channel:7:members")).thenReturn(Set.of("5", "17"));
+        when(setOperations.intersect("chatServerUri:10.0.0.2:2222", "channel:7:members")).thenReturn(Set.of("9"));
         expectDelivery("http://10.0.0.1:1111/internal/chat/deliver", List.of(5L, 17L)).andRespond(withSuccess());
         expectDelivery("http://10.0.0.2:2222/internal/chat/deliver", List.of(9L)).andRespond(withSuccess());
 
@@ -79,12 +79,12 @@ class ChatMessageDeliveryServiceUnitTest {
     }
 
     @Test
-    @DisplayName("success case : 접속자가 없는 채팅 서버에는 보내지 않는다")
-    void 접속자가_없는_채팅_서버에는_보내지_않는다() {
+    @DisplayName("success case : 채널 멤버가 접속하지 않은 채팅 서버에는 보내지 않는다")
+    void 채널_멤버가_접속하지_않은_채팅_서버에는_보내지_않는다() {
         // arrange
         givenChatServers(chatServer("10.0.0.1", 1111), chatServer("10.0.0.2", 2222));
-        when(setOperations.members("chatServerUri:10.0.0.1:1111")).thenReturn(Set.of());
-        when(setOperations.members("chatServerUri:10.0.0.2:2222")).thenReturn(Set.of("9"));
+        when(setOperations.intersect("chatServerUri:10.0.0.1:1111", "channel:7:members")).thenReturn(Set.of());
+        when(setOperations.intersect("chatServerUri:10.0.0.2:2222", "channel:7:members")).thenReturn(Set.of("9"));
         expectDelivery("http://10.0.0.2:2222/internal/chat/deliver", List.of(9L)).andRespond(withSuccess());
 
         // act
@@ -99,8 +99,8 @@ class ChatMessageDeliveryServiceUnitTest {
     void 한_채팅_서버_전달이_실패해도_나머지_서버에는_전달한다() {
         // arrange
         givenChatServers(chatServer("10.0.0.1", 1111), chatServer("10.0.0.2", 2222));
-        when(setOperations.members("chatServerUri:10.0.0.1:1111")).thenReturn(Set.of("5"));
-        when(setOperations.members("chatServerUri:10.0.0.2:2222")).thenReturn(Set.of("9"));
+        when(setOperations.intersect("chatServerUri:10.0.0.1:1111", "channel:7:members")).thenReturn(Set.of("5"));
+        when(setOperations.intersect("chatServerUri:10.0.0.2:2222", "channel:7:members")).thenReturn(Set.of("9"));
         expectDelivery("http://10.0.0.1:1111/internal/chat/deliver", List.of(5L)).andRespond(withServerError());
         expectDelivery("http://10.0.0.2:2222/internal/chat/deliver", List.of(9L)).andRespond(withSuccess());
 

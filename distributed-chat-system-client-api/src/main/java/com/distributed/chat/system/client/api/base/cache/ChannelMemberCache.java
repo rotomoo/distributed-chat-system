@@ -1,5 +1,6 @@
 package com.distributed.chat.system.client.api.base.cache;
 
+import java.util.Collection;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
@@ -37,5 +38,15 @@ public class ChannelMemberCache {
             return;
         }
         addToCache.run();
+    }
+
+    /**
+     * MySQL 기준으로 캐시를 다시 채운다 (Redis 유실 등으로 키가 없을 때)
+     */
+    public void replace(Long channelId, Collection<Long> userIds) {
+        redisTemplate.delete(key(channelId));
+        if (!userIds.isEmpty()) {
+            redisTemplate.opsForSet().add(key(channelId), userIds.stream().map(String::valueOf).toArray());
+        }
     }
 }

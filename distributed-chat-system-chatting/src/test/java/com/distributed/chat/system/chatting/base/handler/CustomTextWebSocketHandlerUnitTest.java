@@ -12,8 +12,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.distributed.chat.system.chatting.web.controller.feign.ClientApiClient;
 import com.distributed.chat.system.chatting.web.controller.feign.KafkaProducerClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.InetSocketAddress;
@@ -30,11 +32,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -65,6 +70,9 @@ class CustomTextWebSocketHandlerUnitTest {
     @Mock
     private KafkaProducerClient kafkaProducerClient;
 
+    @Mock
+    private ClientApiClient clientApiClient;
+
     private CustomTextWebSocketHandler handler;
 
     private final AtomicInteger sessionSequence = new AtomicInteger();
@@ -75,7 +83,7 @@ class CustomTextWebSocketHandlerUnitTest {
     void setup() {
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(redisTemplate.opsForSet()).thenReturn(setOperations);
-        handler = new CustomTextWebSocketHandler(redisTemplate, kafkaProducerClient, new ObjectMapper());
+        handler = new CustomTextWebSocketHandler(redisTemplate, kafkaProducerClient, clientApiClient, new ObjectMapper());
         executor = Executors.newFixedThreadPool(16);
     }
 
@@ -234,6 +242,86 @@ class CustomTextWebSocketHandlerUnitTest {
         order.verify(setOperations).add(anyString(), eq(USER_ID));
         order.verify(pc).sendMessage(argThat(message ->
             message instanceof TextMessage text && text.getPayload().contains("\"type\":\"connected\"")));
+    }
+
+    @Test
+    @DisplayName("success case : 채널 멤버가 보낸 메시지는 채널 ID 와 함께 발행한다")
+    void 채널_멤버가_보낸_메시지는_채널_ID_와_함께_발행한다() throws Exception {
+        // arrange
+        WebSocketSession pc = session(USER_ID);
+        handler.afterConnectionEstablished(pc);
+        when(redisTemplate.hasKey("channel:7:members")).thenReturn(true);
+        when(setOperations.isMember("channel:7:members", USER_ID)).thenReturn(true);
+
+        // act
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"message\",\"channelId\":7,\"message\":\"안녕\"}"));
+
+        // assert
+        ArgumentCaptor<ChatMessage> published = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(kafkaProducerClient).publishChatSendMessage(published.capture());
+        assertThat(published.getValue().getChannelId()).isEqualTo(7L);
+        assertThat(published.getValue().getSendUserId()).isEqualTo(5L);
+        assertThat(published.getValue().getMessage()).isEqualTo("안녕");
+    }
+
+    @Test
+    @DisplayName("fail case : 채널 멤버가 아니면 발행하지 않고 보낸 사람에게 오류를 보낸다")
+    void 채널_멤버가_아니면_발행하지_않고_보낸_사람에게_오류를_보낸다() throws Exception {
+        // arrange
+        WebSocketSession pc = session(USER_ID);
+        handler.afterConnectionEstablished(pc);
+        when(redisTemplate.hasKey("channel:7:members")).thenReturn(true);
+        when(setOperations.isMember("channel:7:members", USER_ID)).thenReturn(false);
+
+        // act
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"message\",\"channelId\":7,\"message\":\"안녕\"}"));
+
+        // assert
+        verifyNoInteractions(kafkaProducerClient);
+        verify(pc).sendMessage(errorFrame(3003));
+    }
+
+    @Test
+    @DisplayName("success case : 채널 멤버 캐시가 없으면 client-api 에서 다시 채운 뒤 확인한다")
+    void 채널_멤버_캐시가_없으면_client_api_에서_다시_채운_뒤_확인한다() throws Exception {
+        // arrange
+        WebSocketSession pc = session(USER_ID);
+        handler.afterConnectionEstablished(pc);
+        when(redisTemplate.hasKey("channel:7:members")).thenReturn(false);
+        when(clientApiClient.refreshChannelMembers(7L)).thenReturn(List.of(5L, 9L));
+
+        // act
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"message\",\"channelId\":7,\"message\":\"안녕\"}"));
+
+        // assert
+        verify(clientApiClient).refreshChannelMembers(7L);
+        verify(kafkaProducerClient).publishChatSendMessage(any(ChatMessage.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "그냥 텍스트",
+        "{\"type\":\"message\",\"message\":\"채널 없음\"}",
+        "{\"type\":\"message\",\"channelId\":7,\"message\":\"   \"}",
+        "{\"type\":\"ping\",\"channelId\":7,\"message\":\"안녕\"}"
+    })
+    @DisplayName("fail case : 형식이 틀린 메시지는 발행하지 않고 오류를 보낸다")
+    void 형식이_틀린_메시지는_발행하지_않고_오류를_보낸다(String payload) throws Exception {
+        // arrange
+        WebSocketSession pc = session(USER_ID);
+        handler.afterConnectionEstablished(pc);
+
+        // act
+        handler.handleMessage(pc, new TextMessage(payload));
+
+        // assert
+        verifyNoInteractions(kafkaProducerClient);
+        verify(pc).sendMessage(errorFrame(4002));
+    }
+
+    private static TextMessage errorFrame(int code) {
+        return argThat((TextMessage message) -> message.getPayload().contains("\"type\":\"error\"")
+            && message.getPayload().contains("\"code\":" + code));
     }
 
     private static TextMessage chatMessage() {

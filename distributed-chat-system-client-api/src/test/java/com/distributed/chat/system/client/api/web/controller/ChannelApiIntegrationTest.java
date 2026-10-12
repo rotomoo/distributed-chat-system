@@ -6,10 +6,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.distributed.chat.system.client.api.base.cache.ChannelMemberCache;
+import com.distributed.chat.system.mongodb.collection.ChatMessage;
+import com.distributed.chat.system.mongodb.repository.ChatMessageRepository;
 import com.distributed.chat.system.mysql.entity.User;
 import com.distributed.chat.system.mysql.repository.UserRepository;
 import com.jayway.jsonpath.JsonPath;
 import jakarta.transaction.Transactional;
+import java.time.Instant;
 import java.util.UUID;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -34,6 +39,12 @@ class ChannelApiIntegrationTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private ChatMessageRepository chatMessageRepository;
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
 
     private Long alice;
     private Long bob;
@@ -143,6 +154,66 @@ class ChannelApiIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content("{\"userId\":" + carol + "}")))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.code").value(2003));
+    }
+
+    @Test
+    @DisplayName("success case : 채널 메시지를 최근 것부터 끊어서 가져오고 before 로 이전 메시지를 이어서 가져온다")
+    void 채널_메시지를_최근_것부터_끊어서_가져오고_before_로_이전_메시지를_이어서_가져온다() throws Exception {
+        // given
+        Long teamId = createTeam(alice, uniqueTeamName());
+        Long channelId = createChannel(alice, teamId, "history");
+        for (int i = 1; i <= 3; i++) {
+            chatMessageRepository.save(ChatMessage.builder().channelId(channelId).content("m" + i)
+                .createUserId(alice).eventPublishDt(Instant.now()).createDt(Instant.now()).build());
+        }
+
+        // when
+        String latest = mockMvc.perform(as(alice, get("/v1/private/api/channel/" + channelId + "/messages").param("size", "2")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.list[*].message").value(Matchers.contains("m2", "m3")))
+            .andReturn().getResponse().getContentAsString();
+        String oldestOfPage = JsonPath.read(latest, "$.data.list[0].messageId");
+
+        // then
+        mockMvc.perform(as(alice, get("/v1/private/api/channel/" + channelId + "/messages")
+                .param("before", oldestOfPage).param("size", "2")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.list[*].message").value(Matchers.contains("m1")));
+
+        chatMessageRepository.deleteAll(chatMessageRepository.findByChannelIdOrderByIdDesc(channelId,
+            org.springframework.data.domain.PageRequest.of(0, 10)));
+    }
+
+    @Test
+    @DisplayName("fail case : 채널 멤버가 아니면 메시지를 볼 수 없다")
+    void 채널_멤버가_아니면_메시지를_볼_수_없다() throws Exception {
+        // given
+        Long teamId = createTeam(alice, uniqueTeamName());
+        Long channelId = createChannel(alice, teamId, "secret");
+
+        // when & then
+        mockMvc.perform(as(bob, get("/v1/private/api/channel/" + channelId + "/messages")))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value(3003));
+    }
+
+    @Test
+    @DisplayName("success case : 채널 멤버 캐시가 비면 내부 API 로 MySQL 기준으로 다시 채운다")
+    void 채널_멤버_캐시가_비면_내부_API_로_MySQL_기준으로_다시_채운다() throws Exception {
+        // given
+        Long teamId = createTeam(alice, uniqueTeamName());
+        Long channelId = createChannel(alice, teamId, "cache");
+        redisTemplate.delete(ChannelMemberCache.key(channelId));
+
+        // when
+        mockMvc.perform(get("/internal/channel/" + channelId + "/members"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$").value(Matchers.contains(alice.intValue())));
+
+        // then
+        org.assertj.core.api.Assertions.assertThat(
+            redisTemplate.opsForSet().isMember(ChannelMemberCache.key(channelId), String.valueOf(alice))).isTrue();
+        redisTemplate.delete(ChannelMemberCache.key(channelId));
     }
 
     private Long createTeam(Long userId, String teamName) throws Exception {

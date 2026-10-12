@@ -26,7 +26,11 @@ public enum ErrorCode {
     ALREADY_USING_CHANNEL_NAME(3001, BAD_REQUEST, "이미 존재하는 채널입니다."),
     NOT_EXIST_CHANNEL(3002, BAD_REQUEST, "없는 채널입니다."),
     NOT_CHANNEL_MEMBER(3003, FORBIDDEN, "채널 멤버가 아닙니다."),
-    CANNOT_DM_SELF(3004, BAD_REQUEST, "자기 자신에게는 DM 을 보낼 수 없습니다.");
+    CANNOT_DM_SELF(3004, BAD_REQUEST, "자기 자신에게는 DM 을 보낼 수 없습니다."),
+
+    /* 메시지 */
+    INVALID_MESSAGE_CURSOR(4001, BAD_REQUEST, "잘못된 메시지 위치입니다."),
+    INVALID_CHAT_MESSAGE(4002, BAD_REQUEST, "잘못된 메시지 형식입니다.");
 
     private final int customCode;
     private final HttpStatus httpStatus;

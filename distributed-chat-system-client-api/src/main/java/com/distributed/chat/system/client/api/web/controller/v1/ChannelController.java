@@ -3,6 +3,7 @@ package com.distributed.chat.system.client.api.web.controller.v1;
 import com.distributed.chat.system.client.api.web.controller.v1.spec.ChannelControllerSpec;
 import com.distributed.chat.system.client.api.web.dto.channel.CreateChannelRequestDto;
 import com.distributed.chat.system.client.api.web.dto.channel.OpenDmRequestDto;
+import com.distributed.chat.system.client.api.web.service.ChannelMessageService;
 import com.distributed.chat.system.client.api.web.service.ChannelService;
 import com.distributed.chat.system.common.response.ResponseData;
 import jakarta.validation.Valid;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChannelController implements ChannelControllerSpec {
 
     private final ChannelService channelService;
+    private final ChannelMessageService channelMessageService;
 
     /**
      * 팀의 공개 채널 목록 (참여 여부 포함)
@@ -94,6 +96,24 @@ public class ChannelController implements ChannelControllerSpec {
     @PostMapping("/dm")
     public ResponseEntity<?> openDm(@RequestParam Long teamId, @RequestBody @Valid OpenDmRequestDto openDmRequestDto) {
         ResponseData responseData = channelService.openDm(teamId, openDmRequestDto);
+
+        return ResponseEntity.ok(responseData);
+    }
+
+    /**
+     * 채널 메시지 이력 (오래된 순). before 를 주면 그보다 이전 메시지
+     *
+     * @param channelId
+     * @param before
+     * @param size
+     * @return
+     */
+    @Override
+    @GetMapping("/{channelId}/messages")
+    public ResponseEntity<?> getMessages(@PathVariable Long channelId,
+        @RequestParam(required = false) String before,
+        @RequestParam(defaultValue = "20") int size) {
+        ResponseData responseData = channelMessageService.getMessages(channelId, before, size);
 
         return ResponseEntity.ok(responseData);
     }
