@@ -55,8 +55,11 @@ public class LoggingInterceptor implements HandlerInterceptor {
             .stream()
             .map(entry -> entry.getKey() + "=" + String.join(",", entry.getValue()))
             .collect(Collectors.joining(", "));
-        String requestBody = String.valueOf(
-            objectMapper.readTree(new String(requestWrapper.getContents(), StandardCharsets.UTF_8)));
+        // JSON 이 아닌 바디(protobuf 등 바이너리)는 파싱하지 않고 크기만 남긴다
+        String contentType = request.getContentType();
+        String requestBody = contentType == null || contentType.contains("json")
+            ? String.valueOf(objectMapper.readTree(new String(requestWrapper.getContents(), StandardCharsets.UTF_8)))
+            : "<" + contentType + ", " + requestWrapper.getContents().length + " bytes>";
 
         log.info("\n" +
                 "[REQUEST] {} - {} \n" +
