@@ -10,6 +10,11 @@ export default defineConfig({
     outDir: '../infra/distributed-chat-system-api-gateway/src/main/resources/static',
     emptyOutDir: true,
   },
+  // npm test : 브라우저 없이 jsdom 에서 컴포넌트를 돌린다
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.js'],
+  },
   server: {
     port: 5173,
     proxy: {

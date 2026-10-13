@@ -10,6 +10,10 @@ dependencies {
 
     // redis
     implementation('org.springframework.boot:spring-boot-starter-data-redis')
+
+    // 메트릭 (/actuator/prometheus)
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
 }
 // ── 프론트 ────────────────────────────────────────────────────────────────
 // 루트 frontend(vite) 빌드 산출물을 src/main/resources/static 으로 떨궈 게이트웨이 jar 에 싣는다.
@@ -34,9 +38,24 @@ tasks.register('frontendBuild', Exec) {
     outputs.dir(file('src/main/resources/static'))
 }
 
+// 프론트 단위 테스트(vitest). 출력이 없으므로 매번 돈다
+tasks.register('frontendTest', Exec) {
+    onlyIf { frontendDir.exists() }
+    dependsOn 'frontendInstall'
+    workingDir frontendDir
+    commandLine 'npm', 'test'
+}
+
 // npm 이 없는 곳에서도 서버는 빌드돼야 한다 — SKIP_FRONTEND=true 면 프론트만 건너뛴다.
+// ./gradlew build / test 가 프론트 테스트까지 돌린다 (CI 는 ./gradlew build)
+def frontendEnabled = frontendDir.exists() && System.getenv('SKIP_FRONTEND') != 'true'
 tasks.named('processResources') {
-    if (frontendDir.exists() && System.getenv('SKIP_FRONTEND') != 'true') {
+    if (frontendEnabled) {
         dependsOn 'frontendBuild'
+    }
+}
+tasks.named('test') {
+    if (frontendEnabled) {
+        dependsOn 'frontendTest'
     }
 }
