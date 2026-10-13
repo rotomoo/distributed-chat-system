@@ -8,21 +8,26 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.distributed.chat.system.client.api.base.presence.UserPresenceReader;
 import com.distributed.chat.system.client.api.web.dto.team.CreateTeamRequestDto;
 import com.distributed.chat.system.client.api.web.dto.team.CreateTeamResponseDto;
+import com.distributed.chat.system.client.api.web.dto.team.TeamMemberDto;
 import com.distributed.chat.system.common.exception.ApiException;
 import com.distributed.chat.system.common.exception.ErrorCode;
 import com.distributed.chat.system.common.response.ResponseData;
 import com.distributed.chat.system.mysql.entity.Channel;
 import com.distributed.chat.system.mysql.entity.Team;
 import com.distributed.chat.system.mysql.entity.TeamUser;
+import com.distributed.chat.system.mysql.entity.User;
 import com.distributed.chat.system.mysql.enums.ChannelType;
 import com.distributed.chat.system.mysql.repository.ChannelRepository;
 import com.distributed.chat.system.mysql.repository.TeamRepository;
 import com.distributed.chat.system.mysql.repository.TeamUserRepository;
 import com.distributed.chat.system.mysql.repository.UserRepository;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -56,6 +61,9 @@ public class TeamServiceUnitTest {
 
     @Mock
     private ChannelService channelService;
+
+    @Mock
+    private UserPresenceReader userPresenceReader;
 
     @InjectMocks
     private TeamService teamService;
@@ -169,5 +177,27 @@ public class TeamServiceUnitTest {
         // assert
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_TEAM_MEMBER);
         assertThat(exception.getErrorCode().getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("success case : 팀 멤버 목록에 지금 채팅 서버에 연결됐는지 표시한다")
+    void 팀_멤버_목록에_지금_채팅_서버에_연결됐는지_표시한다() {
+        // arrange
+        when(teamUserRepository.existsByTeamIdAndUserIdAndDeleteYnIsFalse(10L, LOGIN_ID)).thenReturn(true);
+        when(teamUserRepository.findAllByTeamIdAndDeleteYnIsFalse(10L)).thenReturn(List.of(
+            TeamUser.builder().teamId(10L).userId(1L).build(),
+            TeamUser.builder().teamId(10L).userId(2L).build()));
+        when(userRepository.findAllById(List.of(1L, 2L))).thenReturn(List.of(
+            new User(2L, "bob", "bob", "hash", false),
+            new User(1L, "alice", "alice", "hash", false)));
+        when(userPresenceReader.findOnlineUserIds(List.of(1L, 2L))).thenReturn(Set.of(2L));
+
+        // act
+        ResponseData<Map<String, List<TeamMemberDto>>> response = teamService.getTeamMembers(10L);
+
+        // assert
+        List<TeamMemberDto> members = response.getData().get("list");
+        assertThat(members).extracting(TeamMemberDto::getUserName).containsExactly("alice", "bob");
+        assertThat(members).extracting(TeamMemberDto::getOnline).containsExactly(false, true);
     }
 }

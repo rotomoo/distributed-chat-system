@@ -11,3 +11,16 @@ spring:
   output:
     ansi:
       enabled: always
+
+# 메트릭 : 게이트웨이는 공개 포트(8080)로 밖에 열려 있으므로 actuator 는 따로 둔 관리 포트(기본 8081)에서만 연다.
+# 공개 포트의 /actuator/** 는 404 (라우트도 /v1/**, /websocket/** 뿐). 관리 포트는 내부 네트워크(Prometheus)에서만 접근
+management:
+  server:
+    port: ${MANAGEMENT_PORT:8081}
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}

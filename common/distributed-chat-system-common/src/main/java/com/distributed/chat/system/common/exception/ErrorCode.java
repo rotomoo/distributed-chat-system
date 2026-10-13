@@ -2,6 +2,8 @@ package com.distributed.chat.system.common.exception;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.FORBIDDEN;
+import static org.springframework.http.HttpStatus.NOT_FOUND;
+import static org.springframework.http.HttpStatus.PAYLOAD_TOO_LARGE;
 import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 
 import lombok.AllArgsConstructor;
@@ -30,7 +32,12 @@ public enum ErrorCode {
 
     /* 메시지 */
     INVALID_MESSAGE_CURSOR(4001, BAD_REQUEST, "잘못된 메시지 위치입니다."),
-    INVALID_CHAT_MESSAGE(4002, BAD_REQUEST, "잘못된 메시지 형식입니다.");
+    INVALID_CHAT_MESSAGE(4002, BAD_REQUEST, "잘못된 메시지 형식입니다."),
+
+    /* 첨부파일 */
+    FILE_TOO_LARGE(4003, PAYLOAD_TOO_LARGE, "파일이 너무 큽니다."),
+    EMPTY_FILE(4004, BAD_REQUEST, "빈 파일입니다."),
+    NOT_EXIST_FILE(4005, NOT_FOUND, "없는 파일입니다.");
 
     private final int customCode;
     private final HttpStatus httpStatus;

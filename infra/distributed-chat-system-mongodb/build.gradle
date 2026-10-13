@@ -3,6 +3,13 @@ dependencies {
 
     // mongodb
     implementation('org.springframework.boot:spring-boot-starter-data-mongodb')
+
+    // querydsl (조회 쿼리). querydsl-mongodb 가 끌고 오는 옛 드라이버(mongo-java-driver)는 빼고 boot 의 드라이버를 쓴다
+    implementation('com.querydsl:querydsl-mongodb:5.0.0') {
+        exclude group: 'org.mongodb', module: 'mongo-java-driver'
+    }
+    annotationProcessor 'com.querydsl:querydsl-apt:5.0.0'
+    annotationProcessor 'org.springframework.data:spring-data-mongodb' // MongoAnnotationProcessor (@Document → QClass)
 }
 
 bootJar {
@@ -11,4 +18,30 @@ bootJar {
 
 jar {
     enabled = true
+}
+
+/* querydsl setting (mysql 모듈과 같은 방식) */
+def generated = 'src/main/generated'
+
+// java source set 에 querydsl QClass 위치 추가
+sourceSets {
+    main.java.srcDirs += [generated]
+}
+
+// querydsl QClass 파일 생성 위치를 지정
+tasks.withType(JavaCompile) {
+    options.getGeneratedSourceOutputDirectory().set(file(generated))
+}
+
+// @Document 클래스로 QClass 를 만드는 건 spring-data-mongodb 의 MongoAnnotationProcessor (서비스 등록이 없어 직접 지정, lombok 과 함께)
+compileJava {
+    options.compilerArgs += [
+        '-processor',
+        'lombok.launch.AnnotationProcessorHider$AnnotationProcessor,org.springframework.data.mongodb.repository.support.MongoAnnotationProcessor'
+    ]
+}
+
+// gradle clean 시에 QClass 디렉토리 삭제
+clean {
+    file(generated).deleteDir()
 }

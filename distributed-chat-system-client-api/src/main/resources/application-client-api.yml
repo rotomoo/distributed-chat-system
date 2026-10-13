@@ -12,6 +12,12 @@ spring:
       namespace: distributed-chat-system
     timeout: 15m # default 세션 만료 기한 15분
 
+  # 채팅 첨부파일 (FileService.MAX_FILE_SIZE 와 같은 값. 요청 전체는 다른 폼 필드 몫으로 조금 더)
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
+
 eureka:
   client:
     service-url:
@@ -44,6 +50,12 @@ spring:
     redis:
       namespace: distributed-chat-system
     timeout: 15m # default 세션 만료 기한 15분
+
+  # 채팅 첨부파일 (FileService.MAX_FILE_SIZE 와 같은 값. 요청 전체는 다른 폼 필드 몫으로 조금 더)
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
 
 eureka:
   client:

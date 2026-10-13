@@ -1,6 +1,8 @@
 package com.distributed.chat.system.client.api.web.dto.channel;
 
+import com.distributed.chat.system.client.api.web.dto.file.FileDto;
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -28,4 +30,10 @@ public class ChannelMessageDto {
 
     @Schema(name = "publishDt", description = "보낸 시각 (epoch millis)", example = "1791780452569")
     private Long publishDt;
+
+    @Schema(name = "attachments", description = "첨부파일 (없으면 [])")
+    private List<FileDto> attachments;
+
+    @Schema(name = "reactions", description = "이모지 리액션 (없으면 [])")
+    private List<ReactionDto> reactions;
 }

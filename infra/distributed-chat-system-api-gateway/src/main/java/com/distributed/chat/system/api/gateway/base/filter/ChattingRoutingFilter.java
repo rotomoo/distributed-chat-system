@@ -1,5 +1,6 @@
 package com.distributed.chat.system.api.gateway.base.filter;
 
+import com.distributed.chat.system.common.redis.ChatPresenceKeys;
 import com.distributed.chat.system.common.exception.ApiException;
 import com.distributed.chat.system.common.exception.ErrorCode;
 import java.util.Optional;
@@ -39,7 +40,7 @@ public class ChattingRoutingFilter extends AbstractGatewayFilterFactory<Object> 
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_EXIST_USER_INFO));
 
             String chatServerUri = (String) Optional.ofNullable(
-                redisTemplate.opsForValue().get(userId)).orElse(null);
+                redisTemplate.opsForValue().get(ChatPresenceKeys.userKey(userId))).orElse(null);
 
             log.info("userId : {}, chatServerUri : {}", userId, chatServerUri);
 

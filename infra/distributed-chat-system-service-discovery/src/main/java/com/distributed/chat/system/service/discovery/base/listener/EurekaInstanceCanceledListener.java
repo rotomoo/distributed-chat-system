@@ -1,5 +1,6 @@
 package com.distributed.chat.system.service.discovery.base.listener;
 
+import com.distributed.chat.system.common.redis.ChatPresenceKeys;
 import com.netflix.appinfo.InstanceInfo;
 import com.netflix.eureka.EurekaServerContextHolder;
 import com.netflix.eureka.registry.InstanceRegistry;
@@ -32,14 +33,14 @@ public class EurekaInstanceCanceledListener implements ApplicationListener<Eurek
 
             log.info("Canceled serverKey -> {}", serverKey);
 
-            Set<String> userIds = redisTemplate.opsForSet().members("chatServerUri:" + serverKey);
+            Set<String> userIds = redisTemplate.opsForSet().members(ChatPresenceKeys.chatServerKey(serverKey));
             if (userIds != null) {
                 for (String userId : userIds) {
                     userId = userId.replaceAll("^\"|\"$", "");
                     redisTemplate.delete(userId);
                 }
             }
-            redisTemplate.delete("chatServerUri:" + serverKey);
+            redisTemplate.delete(ChatPresenceKeys.chatServerKey(serverKey));
         } else {
             log.warn("Instance not found in Eureka Registry: {}", instanceId);
         }

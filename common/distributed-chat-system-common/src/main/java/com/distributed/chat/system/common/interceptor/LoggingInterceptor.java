@@ -18,6 +18,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.util.ContentCachingResponseWrapper;
+import org.springframework.web.util.WebUtils;
 
 @Slf4j
 @Component
@@ -48,18 +49,24 @@ public class LoggingInterceptor implements HandlerInterceptor {
         String logId = UUID.randomUUID().toString();
         request.setAttribute(LOG_ID, logId);
 
-        CustomHttpServletRequestWrapper requestWrapper = new CustomHttpServletRequestWrapper(request);
-
         String requestParams = request.getParameterMap()
             .entrySet()
             .stream()
             .map(entry -> entry.getKey() + "=" + String.join(",", entry.getValue()))
             .collect(Collectors.joining(", "));
         // JSON 이 아닌 바디(protobuf 등 바이너리)는 파싱하지 않고 크기만 남긴다
+        // 본문은 LoggingFilter 가 복사해 둔 것만 쓴다. 필터가 건너뛴 요청(multipart, skip-body-paths)의 원래 스트림은 건드리지 않는다
+        // (여기서 읽어 버리면 그 뒤의 컨트롤러가 본문을 읽지 못한다)
         String contentType = request.getContentType();
-        String requestBody = contentType == null || contentType.contains("json")
-            ? String.valueOf(objectMapper.readTree(new String(requestWrapper.getContents(), StandardCharsets.UTF_8)))
-            : "<" + contentType + ", " + requestWrapper.getContents().length + " bytes>";
+        CustomHttpServletRequestWrapper cachedRequest = WebUtils.getNativeRequest(request, CustomHttpServletRequestWrapper.class);
+        String requestBody;
+        if (cachedRequest == null) {
+            requestBody = "<not cached, " + contentType + ", " + request.getContentLengthLong() + " bytes>";
+        } else {
+            requestBody = contentType == null || contentType.contains("json")
+                ? String.valueOf(objectMapper.readTree(new String(cachedRequest.getContents(), StandardCharsets.UTF_8)))
+                : "<" + contentType + ", " + cachedRequest.getContents().length + " bytes>";
+        }
 
         log.info("\n" +
                 "[REQUEST] {} - {} \n" +
@@ -90,12 +97,11 @@ public class LoggingInterceptor implements HandlerInterceptor {
         if (skipYn(requestMethod, requestURI)) {
             return;
         }
-        ContentCachingResponseWrapper responseWrapper;
-        if (response instanceof ContentCachingResponseWrapper) {
-            responseWrapper = (ContentCachingResponseWrapper) response;
-        } else {
-            responseWrapper = new ContentCachingResponseWrapper(response);
-        }
+        // LoggingFilter 가 복사하지 않은 응답(파일 내려받기 등)은 본문을 남기지 않는다
+        ContentCachingResponseWrapper responseWrapper = WebUtils.getNativeResponse(response, ContentCachingResponseWrapper.class);
+        String responseBody = responseWrapper == null
+            ? "<not cached>"
+            : new String(responseWrapper.getContentAsByteArray(), StandardCharsets.UTF_8);
 
         String logId = (String) request.getAttribute(LOG_ID);
 
@@ -106,7 +112,7 @@ public class LoggingInterceptor implements HandlerInterceptor {
             requestMethod,
             requestURI,
             logId,
-            new String(responseWrapper.getContentAsByteArray(), StandardCharsets.UTF_8)
+            responseBody
         );
     }
 

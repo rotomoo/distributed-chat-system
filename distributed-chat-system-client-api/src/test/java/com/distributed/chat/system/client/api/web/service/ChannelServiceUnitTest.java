@@ -3,6 +3,7 @@ package com.distributed.chat.system.client.api.web.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -27,6 +28,7 @@ import com.distributed.chat.system.mysql.repository.UserRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -61,6 +63,9 @@ class ChannelServiceUnitTest {
     @Mock
     private ChannelMemberCache channelMemberCache;
 
+    @Mock
+    private ChannelMessageService channelMessageService;
+
     @InjectMocks
     private ChannelService channelService;
 
@@ -80,8 +85,7 @@ class ChannelServiceUnitTest {
     void 채널_목록에_내가_참여한_채널인지_표시한다() {
         // arrange
         givenTeamMember(LOGIN_ID);
-        when(channelUserRepository.findAllByUserIdAndDeleteYnIsFalse(LOGIN_ID))
-            .thenReturn(List.of(new ChannelUser(100L, LOGIN_ID, 0, null, false)));
+        when(channelUserRepository.findAllByUserIdAndDeleteYnIsFalse(LOGIN_ID)).thenReturn(List.of(membership(100L, null)));
         when(channelRepository.findAllByTeamIdAndChannelTypeAndDeleteYnIsFalseOrderByIdAsc(TEAM_ID, ChannelType.PUBLIC))
             .thenReturn(List.of(publicChannel(100L, "general"), publicChannel(101L, "random")));
 
@@ -92,6 +96,47 @@ class ChannelServiceUnitTest {
         List<ChannelDto> channels = response.getData().get("list");
         assertThat(channels).extracting(ChannelDto::getChannelName).containsExactly("general", "random");
         assertThat(channels).extracting(ChannelDto::getJoined).containsExactly(true, false);
+    }
+
+    @Test
+    @DisplayName("success case : 채널 목록의 안 읽은 수는 참여한 채널만 내 읽음 위치로 100 까지 세고 나머지는 0 이다")
+    void 채널_목록의_안_읽은_수는_참여한_채널만_내_읽음_위치로_100_까지_세고_나머지는_0_이다() {
+        // arrange
+        givenTeamMember(LOGIN_ID);
+        ChannelUser general = membership(100L, "000000000000000000000002");
+        when(channelUserRepository.findAllByUserIdAndDeleteYnIsFalse(LOGIN_ID)).thenReturn(List.of(general));
+        when(channelRepository.findAllByTeamIdAndChannelTypeAndDeleteYnIsFalseOrderByIdAsc(TEAM_ID, ChannelType.PUBLIC))
+            .thenReturn(List.of(publicChannel(100L, "general"), publicChannel(101L, "random")));
+        when(channelMessageService.countUnread(List.of(general), LOGIN_ID, 100)).thenReturn(Map.of(100L, 7));
+
+        // act
+        ResponseData<Map<String, List<ChannelDto>>> response = channelService.getChannels(TEAM_ID);
+
+        // assert
+        assertThat(response.getData().get("list")).extracting(ChannelDto::getUnreadCount).containsExactly(7, 0);
+        verify(channelMessageService, times(1)).countUnread(any(), any(), anyInt());
+    }
+
+    @Test
+    @DisplayName("success case : DM 목록에 상대방과 안 읽은 수를 함께 준다")
+    void DM_목록에_상대방과_안_읽은_수를_함께_준다() {
+        // arrange
+        givenTeamMember(LOGIN_ID);
+        ChannelUser dm = membership(200L, null);
+        when(channelUserRepository.findAllByUserIdAndDeleteYnIsFalse(LOGIN_ID)).thenReturn(List.of(dm, membership(100L, null)));
+        when(channelRepository.findAllByIdInAndTeamIdAndChannelTypeAndDeleteYnIsFalse(Set.of(200L, 100L), TEAM_ID, ChannelType.DM))
+            .thenReturn(List.of(new Channel(200L, TEAM_ID, "dm:3:7", ChannelType.DM, false)));
+        when(userRepository.findAllById(any())).thenReturn(List.of(new User(7L, "bob", "bob", "hash", false)));
+        when(channelMessageService.countUnread(List.of(dm), LOGIN_ID, 100)).thenReturn(Map.of(200L, 2));
+
+        // act
+        ResponseData<Map<String, List<DmDto>>> response = channelService.getDms(TEAM_ID);
+
+        // assert
+        DmDto found = response.getData().get("list").get(0);
+        assertThat(found.getUserId()).isEqualTo(7L);
+        assertThat(found.getUserName()).isEqualTo("bob");
+        assertThat(found.getUnreadCount()).isEqualTo(2);
     }
 
     @Test
@@ -251,6 +296,10 @@ class ChannelServiceUnitTest {
         // act & assert
         assertThat(ChannelService.dmChannelName(3L, 7L)).isEqualTo("dm:3:7");
         assertThat(ChannelService.dmChannelName(7L, 3L)).isEqualTo("dm:3:7");
+    }
+
+    private ChannelUser membership(Long channelId, String lastReadMessageId) {
+        return ChannelUser.builder().channelId(channelId).userId(LOGIN_ID).lastReadMessageId(lastReadMessageId).deleteYn(false).build();
     }
 
     private void givenTeamMember(Long userId) {

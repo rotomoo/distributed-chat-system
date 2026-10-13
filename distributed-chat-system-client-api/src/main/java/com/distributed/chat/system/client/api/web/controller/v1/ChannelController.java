@@ -3,6 +3,7 @@ package com.distributed.chat.system.client.api.web.controller.v1;
 import com.distributed.chat.system.client.api.web.controller.v1.spec.ChannelControllerSpec;
 import com.distributed.chat.system.client.api.web.dto.channel.CreateChannelRequestDto;
 import com.distributed.chat.system.client.api.web.dto.channel.OpenDmRequestDto;
+import com.distributed.chat.system.client.api.web.dto.channel.ReadChannelRequestDto;
 import com.distributed.chat.system.client.api.web.service.ChannelMessageService;
 import com.distributed.chat.system.client.api.web.service.ChannelService;
 import com.distributed.chat.system.common.response.ResponseData;
@@ -13,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -101,10 +103,11 @@ public class ChannelController implements ChannelControllerSpec {
     }
 
     /**
-     * 채널 메시지 이력 (오래된 순). before 를 주면 그보다 이전 메시지
+     * 채널 메시지 이력 (오래된 순). before 를 주면 그보다 이전, after 를 주면 그보다 뒤의 메시지
      *
      * @param channelId
      * @param before
+     * @param after
      * @param size
      * @return
      */
@@ -112,8 +115,38 @@ public class ChannelController implements ChannelControllerSpec {
     @GetMapping("/{channelId}/messages")
     public ResponseEntity<?> getMessages(@PathVariable Long channelId,
         @RequestParam(required = false) String before,
+        @RequestParam(required = false) String after,
         @RequestParam(defaultValue = "20") int size) {
-        ResponseData responseData = channelMessageService.getMessages(channelId, before, size);
+        ResponseData responseData = channelMessageService.getMessages(channelId, before, after, size);
+
+        return ResponseEntity.ok(responseData);
+    }
+
+    /**
+     * 여기까지 읽음 (읽음 위치는 앞으로만 간다)
+     *
+     * @param channelId
+     * @param readChannelRequestDto
+     * @return
+     */
+    @Override
+    @PutMapping("/{channelId}/read")
+    public ResponseEntity<?> markRead(@PathVariable Long channelId, @RequestBody ReadChannelRequestDto readChannelRequestDto) {
+        ResponseData responseData = channelMessageService.markRead(channelId, readChannelRequestDto.getMessageId());
+
+        return ResponseEntity.ok(responseData);
+    }
+
+    /**
+     * 안 읽은 메시지 따라잡기 (안 읽은 수, 안 읽은 첫 메시지)
+     *
+     * @param channelId
+     * @return
+     */
+    @Override
+    @GetMapping("/{channelId}/catch-up")
+    public ResponseEntity<?> getCatchUp(@PathVariable Long channelId) {
+        ResponseData responseData = channelMessageService.getCatchUp(channelId);
 
         return ResponseEntity.ok(responseData);
     }

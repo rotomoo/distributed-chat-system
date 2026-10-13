@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -17,11 +18,11 @@ import org.springframework.data.mongodb.core.mapping.Document;
 public class Comment {
 
     @Id
-    private String id;
-    private String chatMessageId;
+    private ObjectId id;
+    private ObjectId chatMessageId;
     private String content;
     private Instant createDt;
-    public Instant updateDt;
-    public Instant deleteDt;
+    private Instant updateDt;
+    private Instant deleteDt;
     private Long createUserId;
 }

@@ -20,7 +20,7 @@ import com.distributed.chat.system.mysql.repository.UserRepository;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -43,18 +43,21 @@ public class ChannelService {
     private final TeamUserRepository teamUserRepository;
     private final UserRepository userRepository;
     private final ChannelMemberCache channelMemberCache;
+    private final ChannelMessageService channelMessageService;
 
     /**
-     * 팀의 공개 채널 목록 (참여 여부 포함)
+     * 팀의 공개 채널 목록 (참여 여부, 안 읽은 수 포함)
      */
     public ResponseData getChannels(Long teamId) {
         Long loginId = SecurityUtil.getLoginId();
         requireTeamMember(teamId, loginId);
 
-        Set<Long> joinedChannelIds = getJoinedChannelIds(loginId);
-        List<ChannelDto> channels = channelRepository
-            .findAllByTeamIdAndChannelTypeAndDeleteYnIsFalseOrderByIdAsc(teamId, ChannelType.PUBLIC).stream()
-            .map(channel -> new ChannelDto(channel.getId(), channel.getChannelName(), joinedChannelIds.contains(channel.getId())))
+        Map<Long, ChannelUser> memberships = getMemberships(loginId);
+        List<Channel> publicChannels = channelRepository.findAllByTeamIdAndChannelTypeAndDeleteYnIsFalseOrderByIdAsc(teamId, ChannelType.PUBLIC);
+        Map<Long, Integer> unreadCounts = countUnread(publicChannels, memberships, loginId);
+        List<ChannelDto> channels = publicChannels.stream()
+            .map(channel -> new ChannelDto(channel.getId(), channel.getChannelName(), memberships.containsKey(channel.getId()),
+                unreadCounts.getOrDefault(channel.getId(), 0)))
             .toList();
 
         return ResponseData.success("채널 목록 조회", Map.of("list", channels));
@@ -97,15 +100,17 @@ public class ChannelService {
     }
 
     /**
-     * 내 DM 목록
+     * 내 DM 목록 (안 읽은 수 포함)
      */
     public ResponseData getDms(Long teamId) {
         Long loginId = SecurityUtil.getLoginId();
         requireTeamMember(teamId, loginId);
 
+        Map<Long, ChannelUser> memberships = getMemberships(loginId);
         List<Channel> dmChannels = channelRepository.findAllByIdInAndTeamIdAndChannelTypeAndDeleteYnIsFalse(
-            getJoinedChannelIds(loginId), teamId, ChannelType.DM);
+            memberships.keySet(), teamId, ChannelType.DM);
 
+        Map<Long, Integer> unreadCounts = countUnread(dmChannels, memberships, loginId);
         Map<Long, Long> otherUserIdByChannelId = dmChannels.stream()
             .collect(Collectors.toMap(Channel::getId, channel -> otherDmUserId(channel.getChannelName(), loginId)));
         Map<Long, User> users = userRepository.findAllById(otherUserIdByChannelId.values()).stream()
@@ -115,7 +120,8 @@ public class ChannelService {
             .map(channel -> {
                 Long otherUserId = otherUserIdByChannelId.get(channel.getId());
                 User other = users.get(otherUserId);
-                return new DmDto(channel.getId(), otherUserId, other == null ? null : other.getUserName());
+                return new DmDto(channel.getId(), otherUserId, other == null ? null : other.getUserName(),
+                    unreadCounts.getOrDefault(channel.getId(), 0));
             })
             .sorted(Comparator.comparing(DmDto::getChannelId))
             .toList();
@@ -192,10 +198,23 @@ public class ChannelService {
         return first.equals(loginId) ? second : first;
     }
 
-    private Set<Long> getJoinedChannelIds(Long userId) {
+    /**
+     * 내가 참여한 채널 → 내 멤버십 (마지막으로 읽은 메시지 포함)
+     */
+    private Map<Long, ChannelUser> getMemberships(Long userId) {
         return channelUserRepository.findAllByUserIdAndDeleteYnIsFalse(userId).stream()
-            .map(ChannelUser::getChannelId)
-            .collect(Collectors.toSet());
+            .collect(Collectors.toMap(ChannelUser::getChannelId, Function.identity()));
+    }
+
+    /**
+     * 목록에 보이는 채널 중 참여한 채널의 안 읽은 수 (집계 한 번). 참여 안 한 채널은 결과에 없다 = 0
+     */
+    private Map<Long, Integer> countUnread(List<Channel> channels, Map<Long, ChannelUser> memberships, Long loginId) {
+        List<ChannelUser> joined = channels.stream()
+            .map(channel -> memberships.get(channel.getId()))
+            .filter(Objects::nonNull)
+            .toList();
+        return channelMessageService.countUnread(joined, loginId, ChannelMessageService.UNREAD_COUNT_CAP);
     }
 
     private void requireTeamMember(Long teamId, Long userId) {

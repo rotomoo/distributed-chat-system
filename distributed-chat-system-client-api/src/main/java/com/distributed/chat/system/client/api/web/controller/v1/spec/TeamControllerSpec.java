@@ -82,6 +82,6 @@ public interface TeamControllerSpec {
     @Operation(summary = "팀 가입", description = "팀 멤버가 되고 #general 채널에 참여한다. 이미 멤버면 그대로 성공 (2002 없는 팀)")
     ResponseEntity joinTeam(@Parameter(description = "팀 ID") Long teamId);
 
-    @Operation(summary = "팀 멤버 목록 조회", description = "DM 상대 고르기 (2003 팀 멤버가 아님)")
+    @Operation(summary = "팀 멤버 목록 조회", description = "DM 상대 고르기. online = 지금 채팅 서버에 연결된 기기가 있는지 (2003 팀 멤버가 아님)")
     ResponseEntity getTeamMembers(@Parameter(description = "팀 ID") Long teamId);
 }

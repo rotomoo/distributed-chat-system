@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import protobuf.EdaChatMessage.ChatMessageDelivery;
+import protobuf.EdaChatMessage.ChatReactionDelivery;
 
 /**
  * 서버간 내부 통신용. api-gateway 는 /v1/**, /websocket/** 만 라우팅하므로 외부에 노출되지 않는다.
@@ -21,5 +22,13 @@ public class ChatDeliveryController {
     @PostMapping(value = "/deliver", consumes = "application/x-protobuf")
     public void deliver(@RequestBody ChatMessageDelivery delivery) {
         customTextWebSocketHandler.deliver(delivery);
+    }
+
+    /**
+     * 이모지 리액션이 바뀐 메시지의 reactions 전체
+     */
+    @PostMapping(value = "/deliver-reaction", consumes = "application/x-protobuf")
+    public void deliverReaction(@RequestBody ChatReactionDelivery delivery) {
+        customTextWebSocketHandler.deliverReaction(delivery);
     }
 }

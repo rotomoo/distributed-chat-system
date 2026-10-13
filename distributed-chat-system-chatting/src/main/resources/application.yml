@@ -12,3 +12,19 @@ spring:
   output:
     ansi:
       enabled: always
+
+# 앱 수준 하트비트 (ChatHeartbeatScheduler) : ping 주기, 아무 프레임도 없으면 닫는 시간
+chat:
+  heartbeat:
+    ping-interval-ms: 25000
+    timeout-ms: 60000
+
+# 메트릭 : /actuator/health, /actuator/prometheus (SecurityConfig 에서 인증 제외, api-gateway 는 /actuator 를 라우팅하지 않는다)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}

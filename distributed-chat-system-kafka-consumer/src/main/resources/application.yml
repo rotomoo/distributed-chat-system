@@ -12,3 +12,21 @@ spring:
   output:
     ansi:
       enabled: always
+
+
+# 재시도 토픽 대기 (ms). 시도 수 = 대기 수 + 1, 그 뒤 DLT (KafkaRetryTopicConfig)
+chat:
+  kafka:
+    retry:
+      delays-ms: 1000,5000,30000
+      topic-partitions: 3
+
+# 메트릭 : /actuator/health, /actuator/prometheus (api-gateway 는 /v1/**, /websocket/** 만 라우팅하므로 밖으로 노출되지 않는다)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}

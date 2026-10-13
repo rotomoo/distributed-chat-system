@@ -1,5 +1,6 @@
 package com.distributed.chat.system.client.api.web.service;
 
+import com.distributed.chat.system.client.api.base.presence.UserPresenceReader;
 import com.distributed.chat.system.client.api.base.security.SecurityUtil;
 import com.distributed.chat.system.client.api.web.dto.common.PagingInfo;
 import com.distributed.chat.system.client.api.web.dto.team.CreateTeamResponseDto;
@@ -24,6 +25,7 @@ import java.util.Comparator;
 import java.util.List;
 import com.distributed.chat.system.mysql.repository.mapping.dto.GetTeamsMappingDto;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -40,6 +42,7 @@ public class TeamService {
     private final ChannelRepository channelRepository;
     private final UserRepository userRepository;
     private final ChannelService channelService;
+    private final UserPresenceReader userPresenceReader;
 
     /**
      * 팀 목록 조회
@@ -122,7 +125,7 @@ public class TeamService {
     }
 
     /**
-     * 팀 멤버 목록 (DM 상대 고르기)
+     * 팀 멤버 목록 (DM 상대 고르기). online = 지금 채팅 서버에 연결된 기기가 있는지
      */
     public ResponseData getTeamMembers(Long teamId) {
         Long loginId = SecurityUtil.getLoginId();
@@ -133,9 +136,10 @@ public class TeamService {
         List<Long> userIds = teamUserRepository.findAllByTeamIdAndDeleteYnIsFalse(teamId).stream()
             .map(TeamUser::getUserId)
             .toList();
+        Set<Long> onlineUserIds = userPresenceReader.findOnlineUserIds(userIds);
         List<TeamMemberDto> members = userRepository.findAllById(userIds).stream()
             .sorted(Comparator.comparing(User::getId))
-            .map(user -> new TeamMemberDto(user.getId(), user.getUserName()))
+            .map(user -> new TeamMemberDto(user.getId(), user.getUserName(), onlineUserIds.contains(user.getId())))
             .toList();
 
         return ResponseData.success("팀 멤버 목록 조회", Map.of("list", members));

@@ -25,4 +25,8 @@ dependencies {
 
     // swagger
     compileOnly('org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0')
+
+    // 메트릭 (/actuator/prometheus)
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
 }
