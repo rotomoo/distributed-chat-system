@@ -3,12 +3,61 @@ spring:
     activate:
       on-profile: default
 
+  application:
+    name: notification
+
+  kafka:
+    bootstrap-servers:
+      - localhost:9194
+    consumer:
+      group-id: notification-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+    # 재시도 / DLT 토픽으로 원래 레코드(byte[])를 그대로 다시 보낸다
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:7710/eureka/
+
+  instance:
+    instance-id: ${spring.cloud.client.hostname}:${spring.application.instance_id:${random.value}}
+
 ---
 
 spring:
   config:
     activate:
       on-profile: docker
+
+  application:
+    name: notification
+
+  kafka:
+    bootstrap-servers:
+      - kafka-1:9192
+    consumer:
+      group-id: notification-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+    # 재시도 / DLT 토픽으로 원래 레코드(byte[])를 그대로 다시 보낸다
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://service-discovery:7710/eureka/
+
+  instance:
+    prefer-ip-address: true # 컨테이너 hostname 은 다른 컨테이너에서 resolve 되지 않으므로 IP 로 등록
+    instance-id: ${spring.cloud.client.hostname}:${spring.application.instance_id:${random.value}}
 
 ---
 

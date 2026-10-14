@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  createChannel, getCatchUp, getChannelMessages, getChannels, getDms, getMyTeams, getTeamMembers, getTeams,
+  createChannel, getCatchUp, getChannelMessages, getChannels, getDms, getMyTeams, getPresence, getTeamMembers, getTeams, setChannelMuted,
   joinChannel, joinTeam, markRead, openDm,
 } from '../api.js'
 import { FakeWebSocket } from '../test/FakeWebSocket.js'
@@ -14,6 +14,8 @@ vi.mock('../api.js', () => ({
   getChannels: vi.fn(),
   getDms: vi.fn(),
   getTeamMembers: vi.fn(),
+  getPresence: vi.fn(),
+  setChannelMuted: vi.fn(),
   getChannelMessages: vi.fn(),
   getCatchUp: vi.fn(),
   markRead: vi.fn(),
@@ -35,9 +37,14 @@ const CHANNELS = [
 ]
 const DMS = [{ channelId: 13, userId: 2, userName: '영희', unreadCount: 0 }]
 const MEMBERS = [
-  { userId: 1, userName: '철수', online: true },
-  { userId: 2, userName: '영희', online: false },
-  { userId: 3, userName: '민수', online: true },
+  { userId: 1, userName: '철수' },
+  { userId: 2, userName: '영희' },
+  { userId: 3, userName: '민수' },
+]
+const PRESENCE = [
+  { userId: 1, status: 'online' },
+  { userId: 2, status: 'offline' },
+  { userId: 3, status: 'online' },
 ]
 
 const id = (n) => n.toString(16).padStart(24, '0')
@@ -72,6 +79,7 @@ describe('[단위] Workspace', () => {
     getChannels.mockResolvedValue(CHANNELS)
     getDms.mockResolvedValue(DMS)
     getTeamMembers.mockResolvedValue(MEMBERS)
+    getPresence.mockResolvedValue(PRESENCE)
     getChannelMessages.mockResolvedValue(page([]))
     getCatchUp.mockResolvedValue({ unreadCount: 0, firstUnreadMessageId: null })
     markRead.mockResolvedValue(null)
@@ -372,7 +380,7 @@ describe('[단위] Workspace', () => {
     expect(document.querySelector('.message-list').textContent).toBe(textsBefore)
     expect(badgeOf('점심메뉴')).toBe('3')
     expect(badgeOf('general')).toBeNull()
-    expect(socket().sent).toEqual([{ type: 'pong' }])
+    expect(socket().sent.at(-1)).toEqual({ type: 'pong' })
   })
 
   // ── 안 읽은 배지 ─────────────────────────────────
@@ -473,26 +481,75 @@ describe('[단위] Workspace', () => {
 
   // ── 접속 여부 / 프로필 / DM ─────────────────────────
 
-  it('success case : 팀 멤버 접속 여부를 30초마다 다시 불러와 DM 점에 반영한다', async () => {
+  it('success case : 접속 상태를 15초마다 다시 불러와 DM 점에 반영한다 (멤버 목록은 다시 부르지 않는다)', async () => {
     // arrange
     await renderWorkspace()
     const dotBefore = navItem('영희').querySelector('.presence-dot').className
-    getTeamMembers.mockResolvedValue(MEMBERS.map((m) => ({ ...m, online: true })))
+    getPresence.mockResolvedValue(PRESENCE.map((p) => (p.userId === 2 ? { ...p, status: 'away' } : p)))
 
     // act
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(29_999)
+      await vi.advanceTimersByTimeAsync(14_999)
     })
-    const callsBefore30s = getTeamMembers.mock.calls.length
+    const callsBefore15s = getPresence.mock.calls.length
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1)
     })
 
     // assert
+    expect(getPresence).toHaveBeenCalledWith(1)
     expect(dotBefore).toContain('offline')
-    expect(callsBefore30s).toBe(1)
-    expect(getTeamMembers).toHaveBeenCalledTimes(2)
-    expect(navItem('영희').querySelector('.presence-dot').className).toContain('online')
+    expect(callsBefore15s).toBe(1)
+    expect(getPresence).toHaveBeenCalledTimes(2)
+    expect(navItem('영희').querySelector('.presence-dot').className).toContain('away')
+    expect(getTeamMembers).toHaveBeenCalledTimes(1)
+  })
+
+  it('success case : 다시 연결되면 접속 상태를 바로 다시 불러온다', async () => {
+    // arrange
+    await renderWorkspace()
+    await connect()
+    const callsAfterFirstConnect = getPresence.mock.calls.length
+
+    // act
+    act(() => socket().close())
+    act(() => vi.advanceTimersByTime(1000))
+    await connect()
+
+    // assert
+    expect(getPresence.mock.calls.length).toBe(callsAfterFirstConnect + 1)
+  })
+
+  it('fail case : 접속 상태 조회가 실패하면 모두 오프라인으로 보이고 화면은 그대로 쓴다', async () => {
+    // arrange
+    getPresence.mockRejectedValue(new Error('404'))
+
+    // act
+    await renderWorkspace()
+
+    // assert
+    expect(navItem('영희').querySelector('.presence-dot').className).toContain('offline')
+    expect(title()).toBe('# general')
+  })
+
+  it('success case : 프로필과 DM 머리글에 온라인 / 자리 비움 / 오프라인을 보여 준다', async () => {
+    // arrange
+    getPresence.mockResolvedValue([{ userId: 2, status: 'away' }, { userId: 3, status: 'online' }])
+    getChannelMessages.mockResolvedValue(page([{ ...chat(1, 10, 3), type: undefined }, { ...chat(2, 10, 2), type: undefined }]))
+    await renderWorkspace()
+
+    // act
+    fireEvent.click(screen.getByLabelText('민수 프로필'))
+    const minsu = screen.getByRole('complementary', { name: '프로필' }).querySelector('.profile-presence').textContent
+    fireEvent.click(screen.getByLabelText('영희 프로필'))
+    const younghee = screen.getByRole('complementary', { name: '프로필' }).querySelector('.profile-presence').textContent
+    fireEvent.click(navItem('영희'))
+    await flush()
+
+    // assert
+    expect(minsu).toBe('● 온라인')
+    expect(younghee).toBe('◐ 자리 비움')
+    expect(document.querySelector('.channel-header .presence-dot').className).toContain('away')
   })
 
   it('success case : 메시지의 아바타를 누르면 프로필을 열고, 메시지 보내기로 DM 을 만들어 연다', async () => {

@@ -85,6 +85,7 @@ class CustomTextWebSocketHandlerUnitTest {
     void setup() {
         // 기본 : 이 서버로 접속 위치를 잡는다 (다른 살아 있는 서버가 갖고 있는 경우는 따로 테스트)
         lenient().when(userLocationRegistry.claim(anyString(), anyString())).thenReturn(true);
+        lenient().when(userLocationRegistry.writePresence(anyString(), anyString(), anyString())).thenReturn(true);
         handler = new CustomTextWebSocketHandler(kafkaProducerClient, userLocationRegistry, new ObjectMapper(), clock);
         executor = Executors.newFixedThreadPool(16);
     }
@@ -312,7 +313,9 @@ class CustomTextWebSocketHandlerUnitTest {
         "그냥 텍스트",
         "{\"type\":\"message\",\"message\":\"채널 없음\"}",
         "{\"type\":\"message\",\"channelId\":7,\"message\":\"   \"}",
-        "{\"type\":\"ping\",\"channelId\":7,\"message\":\"안녕\"}"
+        "{\"type\":\"ping\",\"channelId\":7,\"message\":\"안녕\"}",
+        "{\"type\":\"presence\",\"state\":\"busy\"}",
+        "{\"type\":\"presence\"}"
     })
     @DisplayName("fail case : 형식이 틀린 메시지는 발행하지 않고 오류를 보낸다")
     void 형식이_틀린_메시지는_발행하지_않고_오류를_보낸다(String payload) throws Exception {
@@ -326,6 +329,271 @@ class CustomTextWebSocketHandlerUnitTest {
         // assert
         verifyNoInteractions(kafkaProducerClient);
         verify(pc).sendMessage(errorFrame(4002));
+    }
+
+    // ── 접속 상태 (online / away) ──────────────────────────────
+
+    @Test
+    @DisplayName("success case : 처음 붙으면 접속 위치를 잡은 뒤 online 을 쓰고 준비 완료 신호를 보낸다")
+    void 처음_붙으면_접속_위치를_잡은_뒤_online_을_쓰고_준비_완료_신호를_보낸다() throws Exception {
+        // arrange
+        WebSocketSession pc = session(USER_ID);
+
+        // act
+        handler.afterConnectionEstablished(pc);
+
+        // assert
+        String chatServer = chatServerOf(pc);
+        InOrder order = inOrder(userLocationRegistry, pc);
+        order.verify(userLocationRegistry).claim(USER_ID, chatServer);
+        order.verify(userLocationRegistry).writePresence(USER_ID, chatServer, "online");
+        order.verify(pc).sendMessage(argThat(message ->
+            message instanceof TextMessage text && text.getPayload().contains("\"type\":\"connected\"")));
+    }
+
+    @Test
+    @DisplayName("success case : 이미 online 인 유저의 두 번째 기기가 붙으면 다시 쓰지 않는다")
+    void 이미_online_인_유저의_두_번째_기기가_붙으면_다시_쓰지_않는다() throws Exception {
+        // arrange
+        WebSocketSession pc = session(USER_ID);
+        handler.afterConnectionEstablished(pc);
+
+        // act
+        handler.afterConnectionEstablished(session(USER_ID));
+
+        // assert
+        verify(userLocationRegistry, times(1)).writePresence(eq(USER_ID), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("fail case : 다른 살아 있는 서버에 있는 유저는 접속 상태를 쓰지 않는다")
+    void 다른_살아_있는_서버에_있는_유저는_접속_상태를_쓰지_않는다() throws Exception {
+        // arrange
+        WebSocketSession pc = session(USER_ID);
+        when(userLocationRegistry.claim(eq(USER_ID), anyString())).thenReturn(false);
+
+        // act
+        handler.afterConnectionEstablished(pc);
+        clock.advance(Duration.ofSeconds(30));
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"presence\",\"state\":\"away\"}"));
+
+        // assert
+        verify(userLocationRegistry, never()).writePresence(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("success case : 하나뿐인 기기가 away 를 보내면 away, 다시 active 를 보내면 online 을 쓴다")
+    void 하나뿐인_기기가_away_를_보내면_away_다시_active_를_보내면_online_을_쓴다() throws Exception {
+        // arrange
+        WebSocketSession pc = memberSession();
+
+        // act
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"presence\",\"state\":\"away\"}"));
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"presence\",\"state\":\"away\"}"));
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"presence\",\"state\":\"active\"}"));
+
+        // assert : 접속 online → away → online (같은 상태를 두 번 받아도 한 번만 쓴다)
+        InOrder order = inOrder(userLocationRegistry);
+        order.verify(userLocationRegistry).writePresence(USER_ID, chatServerOf(pc), "online");
+        order.verify(userLocationRegistry).writePresence(USER_ID, chatServerOf(pc), "away");
+        order.verify(userLocationRegistry).writePresence(USER_ID, chatServerOf(pc), "online");
+        verify(userLocationRegistry, times(3)).writePresence(anyString(), anyString(), anyString());
+        verify(pc, never()).sendMessage(errorFrame(4002));
+        verifyNoInteractions(kafkaProducerClient);
+    }
+
+    @Test
+    @DisplayName("success case : 기기가 여러 개면 하나라도 active 면 online 을 유지하고 모두 away 일 때만 away 를 쓴다")
+    void 기기가_여러_개면_하나라도_active_면_online_을_유지하고_모두_away_일_때만_away_를_쓴다() throws Exception {
+        // arrange
+        WebSocketSession pc = session(USER_ID);
+        WebSocketSession phone = session(USER_ID);
+        handler.afterConnectionEstablished(pc);
+        handler.afterConnectionEstablished(phone);
+
+        // act & assert : PC 만 away → 폰이 active 라 online 그대로
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"presence\",\"state\":\"away\"}"));
+        verify(userLocationRegistry, never()).writePresence(anyString(), anyString(), eq("away"));
+
+        // act & assert : 폰도 away → 모두 away
+        handler.handleMessage(phone, new TextMessage("{\"type\":\"presence\",\"state\":\"away\"}"));
+        verify(userLocationRegistry, times(1)).writePresence(USER_ID, chatServerOf(pc), "away");
+
+        // act & assert : 폰이 다시 active → online
+        handler.handleMessage(phone, new TextMessage("{\"type\":\"presence\",\"state\":\"active\"}"));
+        verify(userLocationRegistry, times(2)).writePresence(USER_ID, chatServerOf(pc), "online");
+    }
+
+    @Test
+    @DisplayName("success case : away 기기만 남기고 active 기기가 끊기면 away 로 바꾸고 위치는 지우지 않는다")
+    void away_기기만_남기고_active_기기가_끊기면_away_로_바꾸고_위치는_지우지_않는다() throws Exception {
+        // arrange
+        WebSocketSession pc = session(USER_ID);
+        WebSocketSession phone = session(USER_ID);
+        handler.afterConnectionEstablished(pc);
+        handler.afterConnectionEstablished(phone);
+        handler.handleMessage(phone, new TextMessage("{\"type\":\"presence\",\"state\":\"away\"}"));
+
+        // act
+        handler.afterConnectionClosed(pc, CloseStatus.NORMAL);
+
+        // assert
+        verify(userLocationRegistry).writePresence(USER_ID, chatServerOf(pc), "away");
+        verify(userLocationRegistry, never()).release(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("success case : away 기기가 끊겨서 active 기기만 남으면 online 은 그대로라 쓰지 않는다")
+    void away_기기가_끊겨서_active_기기만_남으면_쓰지_않는다() throws Exception {
+        // arrange
+        WebSocketSession pc = session(USER_ID);
+        WebSocketSession phone = session(USER_ID);
+        handler.afterConnectionEstablished(pc);
+        handler.afterConnectionEstablished(phone);
+        handler.handleMessage(phone, new TextMessage("{\"type\":\"presence\",\"state\":\"away\"}"));
+
+        // act
+        handler.afterConnectionClosed(phone, CloseStatus.NORMAL);
+
+        // assert : 접속할 때 쓴 online 1번뿐
+        verify(userLocationRegistry, times(1)).writePresence(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("success case : 마지막 기기가 끊기면 접속 상태를 쓰지 않고 위치와 상태를 함께 지우도록 release 만 부른다")
+    void 마지막_기기가_끊기면_접속_상태를_쓰지_않고_release_만_부른다() throws Exception {
+        // arrange
+        WebSocketSession pc = memberSession();
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"presence\",\"state\":\"away\"}"));
+
+        // act
+        handler.afterConnectionClosed(pc, CloseStatus.NORMAL);
+
+        // assert
+        verify(userLocationRegistry, times(2)).writePresence(anyString(), anyString(), anyString());
+        verify(userLocationRegistry).release(USER_ID, chatServerOf(pc));
+    }
+
+    @Test
+    @DisplayName("success case : 받는 프레임마다 TTL 을 갱신하되 유저당 20초에 1번만 지금 상태로 다시 쓴다")
+    void 받는_프레임마다_TTL_을_갱신하되_유저당_20초에_1번만_지금_상태로_다시_쓴다() throws Exception {
+        // arrange
+        WebSocketSession pc = session(USER_ID);
+        WebSocketSession phone = session(USER_ID);
+        handler.afterConnectionEstablished(pc);
+        handler.afterConnectionEstablished(phone);
+
+        // act & assert : 19.999초 → 아직
+        clock.advance(Duration.ofMillis(19_999));
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"pong\"}"));
+        handler.handleMessage(phone, new TextMessage("{\"type\":\"pong\"}"));
+        verify(userLocationRegistry, times(1)).writePresence(anyString(), anyString(), anyString());
+
+        // act & assert : 20초 → 한 기기의 프레임으로 1번 쓰고, 같은 순간 다른 기기 프레임은 건너뛴다
+        clock.advance(Duration.ofMillis(1));
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"pong\"}"));
+        handler.handleMessage(phone, new TextMessage("{\"type\":\"아무거나\"}"));
+        verify(userLocationRegistry, times(2)).writePresence(USER_ID, chatServerOf(pc), "online");
+
+        // act & assert : away 인 상태에서 20초 뒤에는 away 로 갱신
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"presence\",\"state\":\"away\"}"));
+        handler.handleMessage(phone, new TextMessage("{\"type\":\"presence\",\"state\":\"away\"}"));
+        clock.advance(Duration.ofSeconds(20));
+        handler.handleMessage(phone, new TextMessage("{\"type\":\"pong\"}"));
+        verify(userLocationRegistry, times(2)).writePresence(USER_ID, chatServerOf(pc), "away");
+        verify(userLocationRegistry, times(4)).writePresence(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("success case : 메시지 프레임도 TTL 갱신 대상이고 발행은 그대로 한다")
+    void 메시지_프레임도_TTL_갱신_대상이고_발행은_그대로_한다() throws Exception {
+        // arrange
+        WebSocketSession pc = memberSession();
+        clock.advance(Duration.ofSeconds(21));
+
+        // act
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"message\",\"channelId\":7,\"message\":\"안녕\"}"));
+
+        // assert
+        verify(userLocationRegistry, times(2)).writePresence(USER_ID, chatServerOf(pc), "online");
+        verify(kafkaProducerClient).publishChatSendMessage(any(ChatMessage.class));
+    }
+
+    @Test
+    @DisplayName("fail case : 접속 상태 쓰기가 실패해도 접속과 메시지 처리는 계속하고 다음 프레임에서 다시 쓴다")
+    void 접속_상태_쓰기가_실패해도_접속과_메시지_처리는_계속하고_다음_프레임에서_다시_쓴다() throws Exception {
+        // arrange
+        when(userLocationRegistry.writePresence(anyString(), anyString(), anyString()))
+            .thenThrow(new IllegalStateException("redis down"))
+            .thenReturn(true);
+        WebSocketSession pc = session(USER_ID);
+
+        // act
+        handler.afterConnectionEstablished(pc);
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"message\",\"channelId\":7,\"message\":\"안녕\"}"));
+
+        // assert
+        verify(pc).sendMessage(argThat(message ->
+            message instanceof TextMessage text && text.getPayload().contains("\"type\":\"connected\"")));
+        verify(kafkaProducerClient).publishChatSendMessage(any(ChatMessage.class));
+        verify(userLocationRegistry, times(2)).writePresence(USER_ID, chatServerOf(pc), "online");
+        assertThat(handler.getSessions(USER_ID)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("success case : 위치 키가 다른 서버로 넘어가 쓰지 못해도 20초 동안은 다시 시도하지 않는다")
+    void 위치_키가_다른_서버로_넘어가_쓰지_못해도_20초_동안은_다시_시도하지_않는다() throws Exception {
+        // arrange
+        when(userLocationRegistry.writePresence(anyString(), anyString(), anyString())).thenReturn(false);
+        WebSocketSession pc = memberSession();
+
+        // act
+        clock.advance(Duration.ofSeconds(10));
+        handler.handleMessage(pc, new TextMessage("{\"type\":\"pong\"}"));
+
+        // assert
+        verify(userLocationRegistry, times(1)).writePresence(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("success case : 여러 기기가 동시에 away / active 를 보내도 마지막에 쓴 상태가 메모리의 합친 상태와 같다")
+    void 여러_기기가_동시에_away_active_를_보내도_마지막에_쓴_상태가_합친_상태와_같다() throws Exception {
+        // arrange : Redis presence:{userId} 를 값 하나로 흉내 낸다
+        AtomicReference<String> presence = new AtomicReference<>();
+        doAnswer(invocation -> {
+            Thread.sleep(1);
+            presence.set(invocation.getArgument(2));
+            return true;
+        }).when(userLocationRegistry).writePresence(anyString(), anyString(), anyString());
+        List<WebSocketSession> devices = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            devices.add(session(USER_ID));
+        }
+        for (WebSocketSession device : devices) {
+            handler.afterConnectionEstablished(device);
+        }
+
+        // act : 한 기기만 active 로 끝나고 나머지는 away
+        runConcurrently(devices, device -> {
+            handler.handleMessage(device, new TextMessage("{\"type\":\"presence\",\"state\":\"away\"}"));
+            handler.handleMessage(device, new TextMessage("{\"type\":\"presence\",\"state\":\"active\"}"));
+            if (device != devices.get(0)) {
+                handler.handleMessage(device, new TextMessage("{\"type\":\"presence\",\"state\":\"away\"}"));
+            }
+        });
+
+        // assert
+        assertThat(presence.get()).isEqualTo("online");
+
+        // act : 마지막 active 기기도 away
+        handler.handleMessage(devices.get(0), new TextMessage("{\"type\":\"presence\",\"state\":\"away\"}"));
+
+        // assert
+        assertThat(presence.get()).isEqualTo("away");
+    }
+
+    private static String chatServerOf(WebSocketSession session) {
+        return (String) session.getAttributes().get("chatServerUri");
     }
 
     // ── 첨부파일 ────────────────────────────────────────────────

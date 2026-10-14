@@ -120,13 +120,40 @@ class UserLocationRegistryUnitTest {
     }
 
     @Test
-    @DisplayName("success case : 지울 때는 값이 이 서버일 때만 지우는 스크립트를 쓴다 (compare-and-delete)")
-    void 지울_때는_값이_이_서버일_때만_지우는_스크립트를_쓴다() {
+    @DisplayName("success case : 지울 때는 위치 값이 이 서버일 때만 위치 키와 상태 키를 함께 지우는 스크립트를 쓴다 (compare-and-delete)")
+    void 지울_때는_위치_값이_이_서버일_때만_위치_키와_상태_키를_함께_지우는_스크립트를_쓴다() {
         // act
         registry.release("5", ME);
 
         // assert
-        verify(redisTemplate).execute(UserLocationRegistry.COMPARE_AND_DELETE, List.of("5"), "ws://" + ME);
+        verify(redisTemplate).execute(UserLocationRegistry.COMPARE_AND_DELETE, List.of("5", "presence:5"), "ws://" + ME);
         verify(redisTemplate, never()).delete(any(String.class));
+    }
+
+    @Test
+    @DisplayName("success case : 접속 상태는 위치 값이 이 서버일 때만 TTL 60초로 쓰는 스크립트로 쓴다")
+    void 접속_상태는_위치_값이_이_서버일_때만_TTL_60초로_쓰는_스크립트로_쓴다() {
+        // arrange
+        when(redisTemplate.execute(UserLocationRegistry.COMPARE_AND_SET_PRESENCE, List.of("5", "presence:5"), "ws://" + ME, "away"))
+            .thenReturn(1L);
+
+        // act
+        boolean written = registry.writePresence("5", ME, "away");
+
+        // assert
+        assertThat(written).isTrue();
+        assertThat(UserLocationRegistry.COMPARE_AND_SET_PRESENCE.getScriptAsString()).contains("'EX', 60");
+        verify(valueOperations, never()).set(any(), any());
+    }
+
+    @Test
+    @DisplayName("fail case : 위치 값이 다른 서버면 접속 상태를 쓰지 않았다고 돌려준다")
+    void 위치_값이_다른_서버면_접속_상태를_쓰지_않았다고_돌려준다() {
+        // arrange
+        when(redisTemplate.execute(UserLocationRegistry.COMPARE_AND_SET_PRESENCE, List.of("5", "presence:5"), "ws://" + ME, "online"))
+            .thenReturn(0L);
+
+        // act & assert
+        assertThat(registry.writePresence("5", ME, "online")).isFalse();
     }
 }

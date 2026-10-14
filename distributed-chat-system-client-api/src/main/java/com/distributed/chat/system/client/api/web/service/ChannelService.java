@@ -54,8 +54,11 @@ public class ChannelService {
         List<Channel> publicChannels = channelRepository.findAllByTeamIdAndChannelTypeAndDeleteYnIsFalseOrderByIdAsc(teamId, ChannelType.PUBLIC);
         Map<Long, Integer> unreadCounts = countUnread(publicChannels, memberships, loginId);
         List<ChannelDto> channels = publicChannels.stream()
-            .map(channel -> new ChannelDto(channel.getId(), channel.getChannelName(), memberships.containsKey(channel.getId()),
-                unreadCounts.getOrDefault(channel.getId(), 0)))
+            .map(channel -> {
+                ChannelUser membership = memberships.get(channel.getId());
+                return new ChannelDto(channel.getId(), channel.getChannelName(), membership != null,
+                    unreadCounts.getOrDefault(channel.getId(), 0), membership != null && membership.isNotificationMuted());
+            })
             .toList();
 
         return ResponseData.success("채널 목록 조회", Map.of("list", channels));
@@ -119,7 +122,7 @@ public class ChannelService {
                 Long otherUserId = otherUserIdByChannelId.get(channel.getId());
                 User other = users.get(otherUserId);
                 return new DmDto(channel.getId(), otherUserId, other == null ? null : other.getUserName(),
-                    unreadCounts.getOrDefault(channel.getId(), 0));
+                    unreadCounts.getOrDefault(channel.getId(), 0), memberships.get(channel.getId()).isNotificationMuted());
             })
             .sorted(Comparator.comparing(DmDto::getChannelId))
             .toList();
@@ -148,6 +151,19 @@ public class ChannelService {
 
         String targetUserName = userRepository.findById(targetUserId).map(User::getUserName).orElse(null);
         return ResponseData.success("DM 열기", new DmDto(channel.getId(), targetUserId, targetUserName));
+    }
+
+    /**
+     * 이 채널(DM 포함)의 웹 푸시 알림 끄기 / 켜기. 채널 멤버만 (아니면 3003). notification 서버가 알림 보낼 때 읽는다
+     */
+    @Transactional
+    public ResponseData setNotificationMuted(Long channelId, boolean muted) {
+        Long loginId = SecurityUtil.getLoginId();
+        if (channelUserRepository.updateNotificationMuted(channelId, loginId, muted) == 0) {
+            throw new ApiException(ErrorCode.NOT_CHANNEL_MEMBER);
+        }
+
+        return ResponseData.success("채널 알림 설정", Map.of("channelId", channelId, "muted", muted));
     }
 
     /**

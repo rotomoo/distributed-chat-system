@@ -44,6 +44,16 @@ public class ChannelUser extends BaseLoginInfoEntity {
     @Column(columnDefinition = "varchar(24) comment '마지막으로 읽은 메시지 ID'")
     private String lastReadMessageId;
 
+    /**
+     * 이 채널의 웹 푸시 알림을 끔. 쓰는 쪽은 client-api, 읽는 쪽은 notification 서버 (null = 저장 전이라 DB 기본값 false)
+     */
+    @Column(columnDefinition = "boolean not null default false comment '알림 음소거 여부'")
+    private Boolean notificationMuted;
+
     @Column(columnDefinition = "boolean not null default false comment '삭제 여부'")
     private Boolean deleteYn;
+
+    public boolean isNotificationMuted() {
+        return Boolean.TRUE.equals(notificationMuted);
+    }
 }

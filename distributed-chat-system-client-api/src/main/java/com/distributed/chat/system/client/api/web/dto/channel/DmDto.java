@@ -28,7 +28,14 @@ public class DmDto {
     @Schema(name = "unreadCount", description = "안 읽은 메시지 수 (최대 100)", example = "3")
     private Integer unreadCount;
 
+    /**
+     * DM 목록에서만 채운다
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Schema(name = "muted", description = "이 DM 웹 푸시 알림을 껐는지", example = "false")
+    private Boolean muted;
+
     public DmDto(Long channelId, Long userId, String userName) {
-        this(channelId, userId, userName, null);
+        this(channelId, userId, userName, null, null);
     }
 }

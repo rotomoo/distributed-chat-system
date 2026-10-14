@@ -34,7 +34,8 @@ import protobuf.EdaChatMessage.ChatReactionDelivery;
  * 채널 멤버(호출하는 쪽이 MySQL channel_user 에서 읽어 넘김)에게 메시지 / 리액션을 전달한다.
  * <ol>
  *   <li>접속 위치 : 멤버들의 Redis {@code {userId}} 를 MGET 1번 (멤버가 아주 많으면 500 개씩 나눠 파이프라인 1번)</li>
- *   <li>값이 없거나 가리키는 서버가 Eureka 에 없으면(죽은 서버) 오프라인 → 보내지 않는다 (푸시 알림이 붙을 자리)</li>
+ *   <li>값이 없거나 가리키는 서버가 Eureka 에 없으면(죽은 서버) 오프라인 → 보내지 않고 {@link ChatReceivers#offline()} 로 돌려준다
+ *       (메시지는 호출하는 쪽이 웹 푸시 알림 이벤트로 넘긴다, 리액션은 알림 없음)</li>
  *   <li>채팅 서버별로 묶어서 서버당 500 명씩 보낸다. 서로 다른 서버는 동시에 보내고 모두 끝날 때까지 기다린다
  *       (이 레코드 처리가 끝나야 같은 채널의 다음 레코드를 처리하므로 채널 순서가 지켜진다)</li>
  *   <li>한 서버라도 실패하면 끝에서 {@link DeliveryFailedException} → Kafka 재시도 토픽이 다시 전달한다
@@ -70,9 +71,9 @@ public class ChatMessageDeliveryService {
 
     /**
      * @param attachments 컨슈머가 확인한 첨부 (없으면 빈 목록)
-     * @param memberIds   채널 멤버 (보낸 사람 포함 — 보낸 사람의 다른 기기에도 간다)
+     * @param receivers   {@link #locate} 결과. 접속한 멤버(보낸 사람 포함 — 보낸 사람의 다른 기기에도 간다)에게만 보낸다
      */
-    public void deliver(String messageId, ChatMessage chatMessage, List<Attachment> attachments, Collection<Long> memberIds) {
+    public void deliver(String messageId, ChatMessage chatMessage, List<Attachment> attachments, ChatReceivers receivers) {
         List<EdaChatMessage.Attachment> attachmentProtos = attachments.stream()
             .map(attachment -> EdaChatMessage.Attachment.newBuilder()
                 .setFileId(attachment.fileId())
@@ -82,7 +83,7 @@ public class ChatMessageDeliveryService {
                 .build())
             .toList();
 
-        deliverToMembers(memberIds, (chatServerUri, receiveUserIds) ->
+        deliverToChatServers(receivers.byChatServer(), (chatServerUri, receiveUserIds) ->
             chatServerClient.deliver(chatServerUri, ChatMessageDelivery.newBuilder()
                 .setMessageId(messageId)
                 .setChatMessage(chatMessage)
@@ -102,7 +103,7 @@ public class ChatMessageDeliveryService {
                 .build())
             .toList();
 
-        deliverToMembers(memberIds, (chatServerUri, receiveUserIds) ->
+        deliverToChatServers(locate(memberIds).byChatServer(), (chatServerUri, receiveUserIds) ->
             chatServerClient.deliverReaction(chatServerUri, ChatReactionDelivery.newBuilder()
                 .setMessageId(messageId)
                 .setChannelId(channelId)
@@ -111,8 +112,7 @@ public class ChatMessageDeliveryService {
                 .build()));
     }
 
-    private void deliverToMembers(Collection<Long> memberIds, BiConsumer<URI, List<Long>> send) {
-        Map<String, List<Long>> receiversByChatServer = locate(memberIds);
+    private void deliverToChatServers(Map<String, List<Long>> receiversByChatServer, BiConsumer<URI, List<Long>> send) {
         Queue<String> failedChatServers = new ConcurrentLinkedQueue<>();
 
         CompletableFuture<?>[] deliveries = receiversByChatServer.entrySet().stream()
@@ -137,33 +137,35 @@ public class ChatMessageDeliveryService {
     }
 
     /**
-     * 멤버 → 접속한 채팅 서버(ip:port). 오프라인(값 없음 / 죽은 서버)은 빠진다
+     * 멤버 → 접속한 채팅 서버(ip:port) / 오프라인(값 없음 / 죽은 서버)
      */
-    Map<String, List<Long>> locate(Collection<Long> memberIds) {
+    public ChatReceivers locate(Collection<Long> memberIds) {
         List<Long> ids = List.copyOf(memberIds);
         if (ids.isEmpty()) {
-            return Map.of();
+            return new ChatReceivers(Map.of(), List.of());
         }
         List<Object> locations = lookupLocations(ids);
         Set<String> aliveChatServers = ChatServers.alive(discoveryClient);
 
         Map<String, List<Long>> receiversByChatServer = new LinkedHashMap<>();
+        List<Long> offline = new ArrayList<>();
         for (int i = 0; i < ids.size(); i++) {
             Object location = i < locations.size() ? locations.get(i) : null;
             if (!(location instanceof String chatServerUri)) {
-                // 오프라인 : 앱이 꺼져 있다. 푸시 알림은 여기서 이 유저들에게 보내면 된다
-                log.debug("offline userId : {}", ids.get(i));
+                // 오프라인 : 앱이 꺼져 있다
+                offline.add(ids.get(i));
                 continue;
             }
             String chatServer = ChatPresenceKeys.chatServerOf(chatServerUri);
             if (!aliveChatServers.contains(chatServer)) {
                 // 죽은 서버를 가리키는 값 = 오프라인 (서버가 죽어 키를 지우지 못했다)
                 log.debug("offline userId : {} (dead chat server {})", ids.get(i), chatServer);
+                offline.add(ids.get(i));
                 continue;
             }
             receiversByChatServer.computeIfAbsent(chatServer, server -> new ArrayList<>()).add(ids.get(i));
         }
-        return receiversByChatServer;
+        return new ChatReceivers(receiversByChatServer, offline);
     }
 
     /**

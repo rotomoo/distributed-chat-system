@@ -1,6 +1,7 @@
+import { PRESENCE_LABEL } from '../notify.js'
 import Avatar from './Avatar.jsx'
 
-// 오른쪽 프로필. person = { userId, name, account, online }
+// 오른쪽 프로필. person = { userId, name, account, status: online | away | offline }
 export default function ProfilePanel({ person, isMe, error, onClose, onMessage }) {
   return (
     <aside className="profile-panel" aria-label="프로필">
@@ -17,9 +18,7 @@ export default function ProfilePanel({ person, isMe, error, onClose, onMessage }
           {isMe && <span className="profile-me">(나)</span>}
         </h2>
         {person.account && <div className="profile-account">@{person.account}</div>}
-        <div className={`profile-presence ${person.online ? 'online' : 'offline'}`}>
-          {person.online ? '● 온라인' : '○ 오프라인'}
-        </div>
+        <div className={`profile-presence ${person.status}`}>{PRESENCE_LABEL[person.status]}</div>
         {!isMe && (
           <button type="button" className="btn btn-outline" onClick={() => onMessage(person.userId)}>
             메시지 보내기

@@ -19,7 +19,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.AfterAll;
@@ -34,6 +39,7 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.test.EmbeddedKafkaBroker;
@@ -43,12 +49,14 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import protobuf.EdaChatMessage;
 import protobuf.EdaChatMessage.ChatMessageDelivery;
+import protobuf.EdaChatMessage.ChatNotification;
 import protobuf.EdaChatMessage.ChatReaction;
 import protobuf.EdaChatMessage.ChatReactionDelivery;
 
 /**
  * 컨슈머 전체 경로 : Kafka(테스트 안 브로커) → 멤버 확인(로컬 MySQL channel_user) → 저장(로컬 MongoDB)
- * → 접속 위치 MGET(로컬 Redis) → 살아 있는 채팅 서버(simple discovery, JDK HttpServer 가 채팅 서버 대신)로 전달.
+ * → 접속 위치 MGET(로컬 Redis) → 살아 있는 채팅 서버(simple discovery, JDK HttpServer 가 채팅 서버 대신)로 전달
+ * + 오프라인 멤버 알림 이벤트(chat-notification, 같은 테스트 브로커).
  * 테스트 데이터는 실제 데이터와 겹치지 않는 큰 ID 를 쓰고 끝나면 지운다
  */
 @DisplayName("[통합] 컨슈머 전체 경로 (MySQL 멤버 → MongoDB 저장 → Redis 위치 → 채팅 서버 전달) 테스트")
@@ -59,7 +67,7 @@ import protobuf.EdaChatMessage.ChatReactionDelivery;
     "chat.kafka.retry.topic-partitions=1",
     "eureka.client.enabled=false"
 })
-@EmbeddedKafka(partitions = 1, topics = {"chat-send-message", "chat-reaction"})
+@EmbeddedKafka(partitions = 1, topics = {"chat-send-message", "chat-reaction", "chat-notification"})
 class EventConsumerEndToEndIntegrationTest {
 
     private static final Duration WAIT = Duration.ofSeconds(30);
@@ -95,6 +103,8 @@ class EventConsumerEndToEndIntegrationTest {
     private MongoTemplate mongoTemplate;
 
     private KafkaTemplate<String, byte[]> kafkaTemplate;
+    private Consumer<String, byte[]> notificationConsumer;
+    private final List<ChatNotification> notifications = new ArrayList<>();
 
     private Long channelId;
     private Long sender;
@@ -112,6 +122,15 @@ class EventConsumerEndToEndIntegrationTest {
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
         kafkaTemplate = new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(props));
+
+        // chat-notification 을 처음부터 읽는 테스트 전용 컨슈머 (다른 테스트의 채널 알림은 key 로 걸러낸다)
+        Map<String, Object> consumerProps = KafkaTestUtils.consumerProps("e2e-" + UUID.randomUUID(), "false", embeddedKafkaBroker);
+        consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+        notificationConsumer = new DefaultKafkaConsumerFactory<String, byte[]>(consumerProps).createConsumer();
+        notificationConsumer.subscribe(List.of("chat-notification"));
+        notifications.clear();
 
         // 채널 멤버 : 보낸 사람, 접속 중, 앱 꺼짐, 죽은 서버를 가리킴. outsider 는 멤버 아님
         channelId = ThreadLocalRandom.current().nextLong(3_000_000_000L, 4_000_000_000L);
@@ -138,6 +157,7 @@ class EventConsumerEndToEndIntegrationTest {
         redisTemplate.delete(List.of(String.valueOf(sender), String.valueOf(online), String.valueOf(onDeadServer), String.valueOf(outsider)));
         mongoTemplate.remove(Query.query(Criteria.where("channelId").is(channelId)), ChatMessage.class);
         kafkaTemplate.destroy();
+        notificationConsumer.close();
     }
 
     @Test
@@ -216,6 +236,58 @@ class EventConsumerEndToEndIntegrationTest {
         assertThat(mongoTemplate.count(Query.query(Criteria.where("eventId").is(eventId)), ChatMessage.class)).isEqualTo(1);
         TimeUnit.MILLISECONDS.sleep(500);
         assertThat(deliveries("/internal/chat/deliver")).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("success case : 오프라인 멤버(앱 꺼짐, 죽은 서버)에게 알림 이벤트 한 건을 chat-notification 에 발행하고 접속한 멤버는 빠진다")
+    void 오프라인_멤버에게_알림_이벤트_한_건을_chat_notification_에_발행하고_접속한_멤버는_빠진다() throws Exception {
+        // given
+        String eventId = newEventId();
+
+        // when
+        publishMessage(eventId, sender, "점심 뭐 먹을까요?");
+
+        // then
+        await().atMost(WAIT).until(() -> pollNotifications().size() == 1);
+        ChatNotification notification = notifications.get(0);
+        ChatMessage saved = mongoTemplate.findOne(Query.query(Criteria.where("eventId").is(eventId)), ChatMessage.class);
+        assertThat(notification.getMessageId()).isEqualTo(saved.getId().toHexString());
+        assertThat(notification.getChannelId()).isEqualTo(channelId);
+        assertThat(notification.getSenderId()).isEqualTo(sender);
+        assertThat(notification.getPreview()).isEqualTo("점심 뭐 먹을까요?");
+        assertThat(notification.getAttachmentCount()).isZero();
+        assertThat(notification.getReceiverUserIdsList()).containsExactlyInAnyOrder(offline, onDeadServer);
+    }
+
+    @Test
+    @DisplayName("success case : 리액션은 알림 이벤트를 만들지 않는다")
+    void 리액션은_알림_이벤트를_만들지_않는다() throws Exception {
+        // given : 메시지 한 건 (알림 1건)
+        publishMessage(newEventId(), sender, "리액션 대상");
+        await().atMost(WAIT).until(() -> deliveries("/internal/chat/deliver").size() == 1);
+        String messageId = ChatMessageDelivery.parseFrom(deliveries("/internal/chat/deliver").get(0)).getMessageId();
+
+        // when
+        kafkaTemplate.send("chat-reaction", String.valueOf(channelId), ChatReaction.newBuilder().setSendUserId(online)
+            .setChannelId(channelId).setMessageId(messageId).setEmoji("🎉").setAction(ChatReaction.Action.ADD).build().toByteArray()).join();
+
+        // then : 리액션 전달이 끝난 뒤에도 알림은 메시지 것 한 건뿐
+        await().atMost(WAIT).until(() -> deliveries("/internal/chat/deliver-reaction").size() == 1);
+        TimeUnit.MILLISECONDS.sleep(500);
+        assertThat(pollNotifications()).hasSize(1);
+        assertThat(notifications.get(0).getMessageId()).isEqualTo(messageId);
+    }
+
+    /**
+     * 이 테스트 채널(key)의 알림 이벤트를 지금까지 받은 것까지 모아 돌려준다
+     */
+    private List<ChatNotification> pollNotifications() throws Exception {
+        for (ConsumerRecord<String, byte[]> record : notificationConsumer.poll(Duration.ofMillis(200))) {
+            if (String.valueOf(channelId).equals(record.key())) {
+                notifications.add(ChatNotification.parseFrom(record.value()));
+            }
+        }
+        return notifications;
     }
 
     private void publishMessage(String eventId, Long sendUserId, String text) {

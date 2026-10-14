@@ -42,4 +42,25 @@ public interface ChannelUserRepository extends JpaRepository<ChannelUser, Channe
         """)
     int moveLastReadMessageIdForward(@Param("channelId") Long channelId, @Param("userId") Long userId,
         @Param("messageId") String messageId);
+
+    /**
+     * 알림 음소거 켜기 / 끄기 (나가지 않은 멤버만). MySQL 은 값이 같아도 찾은 행 수를 돌려준다
+     *
+     * @return 0 이면 멤버가 아님
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+        update ChannelUser cu set cu.notificationMuted = :muted
+        where cu.channelId = :channelId and cu.userId = :userId and cu.deleteYn = false
+        """)
+    int updateNotificationMuted(@Param("channelId") Long channelId, @Param("userId") Long userId, @Param("muted") boolean muted);
+
+    /**
+     * userIds 중 지금도 채널 멤버이고 알림을 끄지 않은 사람 (알림 서버가 이벤트 한 건에 한 번 조회, PK 범위)
+     */
+    @Query("""
+        select cu.userId from ChannelUser cu
+        where cu.channelId = :channelId and cu.userId in :userIds and cu.deleteYn = false and cu.notificationMuted = false
+        """)
+    List<Long> findUnmutedMemberUserIds(@Param("channelId") Long channelId, @Param("userIds") Collection<Long> userIds);
 }

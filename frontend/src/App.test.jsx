@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getCatchUp, getChannelMessages, getChannels, getDms, getMyInfo, getMyTeams, getTeamMembers, login, logout } from './api.js'
 import App from './App.jsx'
+import { disablePush } from './push.js'
 import { FakeWebSocket } from './test/FakeWebSocket.js'
 import { flush } from './test/fakeSocket.js'
 import { page } from './test/page.js'
@@ -15,10 +16,17 @@ vi.mock('./api.js', () => ({
   getChannels: vi.fn(),
   getDms: vi.fn(),
   getTeamMembers: vi.fn(),
+  getPresence: vi.fn(async () => []),
   getChannelMessages: vi.fn(),
   getCatchUp: vi.fn(),
   markRead: vi.fn(),
   webSocketUrl: () => 'ws://localhost/websocket',
+}))
+
+vi.mock('./push.js', () => ({
+  enablePush: vi.fn(async () => null),
+  disablePush: vi.fn(async () => {}),
+  listenServiceWorker: vi.fn(() => () => {}),
 }))
 
 const ME = { userId: 1, userName: '철수', account: 'chulsoo' }
@@ -36,6 +44,7 @@ describe('[단위] App', () => {
     getChannelMessages.mockResolvedValue(page([]))
     getCatchUp.mockResolvedValue({ unreadCount: 0, firstUnreadMessageId: null })
     logout.mockResolvedValue()
+    disablePush.mockResolvedValue()
   })
 
   afterEach(() => {
@@ -107,8 +116,26 @@ describe('[단위] App', () => {
 
     // assert
     expect(logout).toHaveBeenCalledTimes(1)
+    expect(disablePush.mock.invocationCallOrder[0]).toBeLessThan(logout.mock.invocationCallOrder[0])
     expect(screen.getByRole('heading', { name: '로그인' })).toBeTruthy()
     expect(FakeWebSocket.instances).toHaveLength(1)
     expect(FakeWebSocket.last().readyState).toBe(FakeWebSocket.CLOSED)
+  })
+
+  it('fail case : 웹 푸시 구독 해제가 실패해도 로그아웃한다', async () => {
+    // arrange
+    getMyInfo.mockResolvedValue(ME)
+    disablePush.mockRejectedValue(new Error('network'))
+    render(<App />)
+    await flush()
+
+    // act
+    fireEvent.click(within(document.querySelector('.me-row')).getByText('철수'))
+    fireEvent.click(screen.getByRole('menuitem', { name: '로그아웃' }))
+    await flush()
+
+    // assert
+    expect(logout).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('heading', { name: '로그인' })).toBeTruthy()
   })
 })

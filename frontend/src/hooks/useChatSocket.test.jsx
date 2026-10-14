@@ -277,6 +277,21 @@ describe('[단위] useChatSocket', () => {
     expect(sockets()).toHaveLength(1)
   })
 
+  it('success case : 서버가 4409(다른 채팅 서버에 연결됨)로 닫아도 평소처럼 다시 붙는다', () => {
+    // arrange
+    const { result } = renderHook(() => useChatSocket())
+    act(() => sockets()[0].connected())
+
+    // act
+    act(() => sockets()[0].close(4409))
+    const status = result.current.status
+    act(() => vi.advanceTimersByTime(1000))
+
+    // assert
+    expect(status).toBe('reconnecting')
+    expect(sockets()).toHaveLength(2)
+  })
+
   it('success case : 서버가 4500(SESSION_NOT_RELIABLE) 이나 1011 로 닫아도 평소처럼 다시 붙는다', () => {
     // arrange
     const { result } = renderHook(() => useChatSocket())

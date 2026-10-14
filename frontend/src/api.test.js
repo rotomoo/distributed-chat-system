@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  createChannel, createTeam, getCatchUp, getChannelMessages, getChannels, getDms, getMyTeams, getTeamMembers,
+  createChannel, createTeam, deleteSubscription, getCatchUp, getChannelMessages, getChannels, getDms, getMyTeams, getPresence,
+  getTeamMembers, getVapidPublicKey, saveSubscription, setChannelMuted,
   fileUrl, joinChannel, joinTeam, markRead, openDm, uploadFile,
 } from './api.js'
 
@@ -100,7 +101,7 @@ describe('[단위] api', () => {
     ])
     expect(teams).toEqual([{ teamId: 1, teamName: '60hz' }])
     expect(channels.map((c) => c.unreadCount)).toEqual([3, 0])
-    expect(dms).toEqual([{ channelId: 13, userId: 2, userName: '영희', unreadCount: 0 }])
+    expect(dms).toEqual([{ channelId: 13, userId: 2, userName: '영희', unreadCount: 0, muted: false }])
   })
 
   it('fail case : 목록 조회가 실패하면 빈 배열', async () => {
@@ -114,16 +115,64 @@ describe('[단위] api', () => {
     expect(channels).toEqual([])
   })
 
-  it('success case : 팀 멤버는 online 이 true 일 때만 온라인으로 본다', async () => {
+  it('success case : 접속 상태는 connection-status 의 presence?teamId= 로 조회한다', async () => {
     // arrange
-    fetch.mockResolvedValue(ok({ list: [{ userId: 1, userName: '철수', online: true }, { userId: 2, userName: '영희' }] }))
+    const list = [{ userId: 1, status: 'online' }, { userId: 2, status: 'away' }]
+    fetch.mockResolvedValue(ok({ list }))
 
     // act
-    const members = await getTeamMembers(1)
+    const presence = await getPresence(1)
 
     // assert
-    expect(urls()).toEqual(['/v1/private/api/team/1/members'])
-    expect(members.map((m) => m.online)).toEqual([true, false])
+    expect(urls()).toEqual(['/v1/private/api/presence?teamId=1'])
+    expect(presence).toEqual(list)
+  })
+
+  it('fail case : 접속 상태 서버가 없으면(404) 빈 배열 → 모두 오프라인', async () => {
+    // arrange
+    fetch.mockResolvedValue(notFound())
+
+    // act
+    const presence = await getPresence(1)
+
+    // assert
+    expect(presence).toEqual([])
+  })
+
+  it('success case : 알림 끄기는 PUT /channel/{id}/notification {muted}', async () => {
+    // arrange
+    fetch.mockResolvedValue(ok(null))
+
+    // act
+    await setChannelMuted(11, true)
+
+    // assert
+    const [url, options] = fetch.mock.calls[0]
+    expect([url, options.method, JSON.parse(options.body)]).toEqual(['/v1/private/api/channel/11/notification', 'PUT', { muted: true }])
+  })
+
+  it('success case : 웹 푸시 키 조회 / 구독 저장 / 삭제', async () => {
+    // arrange
+    fetch
+      .mockResolvedValueOnce(ok({ publicKey: 'BKey' }))
+      .mockResolvedValueOnce(ok(null))
+      .mockResolvedValueOnce(ok(null))
+    const subscription = { endpoint: 'https://push/1', keys: { p256dh: 'p', auth: 'a' } }
+
+    // act
+    const key = await getVapidPublicKey()
+    await saveSubscription(subscription)
+    await deleteSubscription('https://push/1')
+
+    // assert
+    expect(key).toBe('BKey')
+    expect(fetch.mock.calls.map(([url, options]) => [url, options?.method ?? 'GET'])).toEqual([
+      ['/v1/private/api/notification/vapid-public-key', 'GET'],
+      ['/v1/private/api/notification/subscriptions', 'POST'],
+      ['/v1/private/api/notification/subscriptions', 'DELETE'],
+    ])
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual(subscription)
+    expect(JSON.parse(fetch.mock.calls[2][1].body)).toEqual({ endpoint: 'https://push/1' })
   })
 
   it('fail case : 멤버 API 가 아직 없으면(404) 빈 배열', async () => {

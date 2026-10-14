@@ -53,7 +53,7 @@ function view({ channel = LUNCH, socket, unreadAtOpen = 0, onOpenProfile = vi.fn
       unreadAtOpen={unreadAtOpen}
       socket={socket}
       nameOf={nameOf}
-      presenceOf={(userId) => userId === 2}
+      presenceOf={(userId) => (userId === 2 ? 'online' : 'offline')}
       onOpenProfile={onOpenProfile}
       onToggleSidebar={() => {}}
     />

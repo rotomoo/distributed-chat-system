@@ -29,7 +29,8 @@ export function firstPageSize(unreadAtOpen) {
 //  channel      : { channelId, kind: 'channel' | 'dm', name, userId(DM 상대) }
 //  unreadAtOpen : 열기 직전 사이드바 배지 수 (첫 페이지 크기)
 //  socket       : useChatSocket 결과
-export default function ChannelView({ channel, unreadAtOpen = 0, socket, myUserId, nameOf, presenceOf, onOpenProfile, onToggleSidebar }) {
+//  onToggleMute(muted) : 이 채널 알림 끄기 / 켜기 (실패하면 던진다)
+export default function ChannelView({ channel, unreadAtOpen = 0, socket, myUserId, nameOf, presenceOf, onOpenProfile, onToggleSidebar, onToggleMute }) {
   const { channelId } = channel
   const { status, connectionId, subscribe, send } = socket
   const connected = status === 'connected'
@@ -53,6 +54,8 @@ export default function ChannelView({ channel, unreadAtOpen = 0, socket, myUserI
   const dragDepthRef = useRef(0)
   const [reactionPicker, setReactionPicker] = useState(null) // { message, anchor }
   const [lightbox, setLightbox] = useState(null) // 크게 보는 이미지 첨부
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [menuError, setMenuError] = useState(null)
   // `${messageId} ${emoji}` → 보낸 시각. 서버 이벤트가 오기 전 같은 칩 연타를 막는다
   const pendingReactionsRef = useRef(new Map())
 
@@ -293,6 +296,16 @@ export default function ChannelView({ channel, unreadAtOpen = 0, socket, myUserI
     },
   }
 
+  const toggleMute = async () => {
+    setMenuOpen(false)
+    setMenuError(null)
+    try {
+      await onToggleMute(!channel.muted)
+    } catch (e) {
+      setMenuError(e.message)
+    }
+  }
+
   const isDm = channel.kind === 'dm'
   const target = isDm ? `${channel.name}에게` : `#${channel.name}에`
   const placeholder = `${target} 메시지 보내기`
@@ -315,6 +328,17 @@ export default function ChannelView({ channel, unreadAtOpen = 0, socket, myUserI
         ) : (
           <h1 className="channel-title"># {channel.name}</h1>
         )}
+        {channel.muted && <span className="muted-mark" title="알림 꺼짐" aria-label="알림 꺼짐">🔕</span>}
+        <span className="header-spacer" />
+        {menuError && <span className="header-error" role="alert">{menuError}</span>}
+        <div className="header-menu">
+          <button type="button" className="icon-button" onClick={() => setMenuOpen((v) => !v)} aria-label="채널 메뉴" aria-haspopup="menu" aria-expanded={menuOpen}>⋮</button>
+          {menuOpen && (
+            <div className="header-menu-list" role="menu">
+              <button type="button" role="menuitem" onClick={toggleMute}>{channel.muted ? '알림 켜기' : '알림 끄기'}</button>
+            </div>
+          )}
+        </div>
       </header>
 
       <div className="message-pane">

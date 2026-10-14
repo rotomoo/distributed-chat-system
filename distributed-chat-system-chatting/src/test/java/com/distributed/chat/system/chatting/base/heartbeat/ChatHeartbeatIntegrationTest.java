@@ -73,8 +73,8 @@ class ChatHeartbeatIntegrationTest {
             }
         }
         sessionIds.forEach(sessionRepository::deleteById);
-        // 테스트 유저의 접속 정보 키만 지운다 (실제 유저와 겹치지 않는 큰 ID)
-        userIds.forEach(userId -> redisTemplate.delete(ChatPresenceKeys.userKey(userId)));
+        // 테스트 유저의 접속 위치 / 접속 상태 키만 지운다 (실제 유저와 겹치지 않는 큰 ID)
+        userIds.forEach(userId -> redisTemplate.delete(List.of(ChatPresenceKeys.userKey(userId), ChatPresenceKeys.presenceKey(userId))));
     }
 
     @Test

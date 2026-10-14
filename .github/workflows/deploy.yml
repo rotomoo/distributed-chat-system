@@ -1,6 +1,6 @@
 name: Deploy
 
-# main 에 머지되면: 테스트 → 이미지 6종 ECR push → 서버가 켜져 있으면 SSM 으로 배포
+# main 에 머지되면: 테스트 → 이미지 8종 ECR push → 서버가 켜져 있으면 SSM 으로 배포
 # 서버가 꺼져 있으면 이미지만 올려 두고, 다음에 server.yml 로 켤 때 latest 로 배포된다.
 on:
   push:
@@ -39,7 +39,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      # docker-bake.hcl : 빌드 단계를 한 번만 돌리고 서비스 6개 이미지를 뽑는다
+      # docker-bake.hcl : 빌드 단계를 한 번만 돌리고 서비스 8개 이미지를 뽑는다
       - name: Build & Push images
         uses: docker/bake-action@v5
         env:

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -16,12 +17,15 @@ import static org.mockito.Mockito.when;
 import com.distributed.chat.system.kafka.consumer.service.ChatAttachmentResolver;
 import com.distributed.chat.system.kafka.consumer.service.DeliveryFailedException;
 import com.distributed.chat.system.kafka.consumer.service.ChatMessageDeliveryService;
+import com.distributed.chat.system.kafka.consumer.service.ChatNotificationPublisher;
+import com.distributed.chat.system.kafka.consumer.service.ChatReceivers;
 import com.distributed.chat.system.mongodb.collection.ChatMessage.Attachment;
 import com.distributed.chat.system.mongodb.collection.ChatMessage.Reaction;
 import com.distributed.chat.system.mongodb.repository.ChatMessageRepository;
 import com.distributed.chat.system.mysql.repository.ChannelUserRepository;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.bson.types.ObjectId;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +33,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -47,6 +52,11 @@ class EventConsumerUnitTest {
     private static final List<Long> MEMBERS = List.of(5L, 9L);
 
     /**
+     * 접속 위치로 나눈 결과 : 5 는 접속 중, 9 는 오프라인
+     */
+    private static final ChatReceivers RECEIVERS = new ChatReceivers(Map.of("10.0.0.1:1111", List.of(5L)), List.of(9L));
+
+    /**
      * 저장된 메시지 ID (전달할 때는 24자리 hex 문자열)
      */
     private static final String SAVED_ID = "6acc66675f99715e286f0f70";
@@ -63,6 +73,9 @@ class EventConsumerUnitTest {
     @Mock
     private ChannelUserRepository channelUserRepository;
 
+    @Mock
+    private ChatNotificationPublisher chatNotificationPublisher;
+
     @InjectMocks
     private EventConsumer eventConsumer;
 
@@ -70,6 +83,7 @@ class EventConsumerUnitTest {
     void setup() {
         // 기본 : 보낸 사람(5)이 채널 멤버. 멤버가 아닌 경우는 따로 테스트
         lenient().when(channelUserRepository.findMemberUserIds(anyLong())).thenReturn(MEMBERS);
+        lenient().when(chatMessageDeliveryService.locate(MEMBERS)).thenReturn(RECEIVERS);
     }
 
     // ── 메시지 ──────────────────────────────────────────────────
@@ -93,7 +107,7 @@ class EventConsumerUnitTest {
         assertThat(saved.getChannelId()).isEqualTo(0L);
         assertThat(saved.getEventPublishDt()).isEqualTo(Instant.ofEpochMilli(1_700_000_000_000L));
         assertThat(saved.getAttachments()).isNull();
-        verify(chatMessageDeliveryService).deliver(eq(SAVED_ID), eq(chatMessage), eq(List.of()), eq(MEMBERS));
+        verify(chatMessageDeliveryService).deliver(eq(SAVED_ID), eq(chatMessage), eq(List.of()), eq(RECEIVERS));
     }
 
     @Test
@@ -111,7 +125,8 @@ class EventConsumerUnitTest {
 
         // assert
         assertThat(savedMessage().getAttachments()).isEqualTo(attachments);
-        verify(chatMessageDeliveryService).deliver(SAVED_ID, chatMessage, attachments, MEMBERS);
+        verify(chatMessageDeliveryService).deliver(SAVED_ID, chatMessage, attachments, RECEIVERS);
+        verify(chatNotificationPublisher).publish(SAVED_ID, chatMessage, 1, List.of(9L));
     }
 
     @Test
@@ -127,7 +142,7 @@ class EventConsumerUnitTest {
 
         // assert
         verify(chatMessageRepository, never()).saveOnce(any());
-        verifyNoInteractions(chatMessageDeliveryService);
+        verifyNoInteractions(chatMessageDeliveryService, chatNotificationPublisher);
     }
 
     @Test
@@ -157,7 +172,7 @@ class EventConsumerUnitTest {
 
         // assert
         assertThat(savedMessage().getEventId()).isEqualTo("event-1");
-        verify(chatMessageDeliveryService).deliver(SAVED_ID, chatMessage, List.of(), MEMBERS);
+        verify(chatMessageDeliveryService).deliver(SAVED_ID, chatMessage, List.of(), RECEIVERS);
     }
 
     @Test
@@ -193,7 +208,7 @@ class EventConsumerUnitTest {
 
         // assert
         assertThat(thrown).isInstanceOf(IllegalStateException.class);
-        verifyNoInteractions(chatMessageDeliveryService);
+        verifyNoInteractions(chatMessageDeliveryService, chatNotificationPublisher);
     }
 
     @Test
@@ -204,14 +219,68 @@ class EventConsumerUnitTest {
         when(chatAttachmentResolver.resolve(chatMessage)).thenReturn(List.of());
         givenSavedAs(SAVED_ID);
         doThrow(new DeliveryFailedException(List.of("10.0.0.1:1111")))
-            .when(chatMessageDeliveryService).deliver(SAVED_ID, chatMessage, List.of(), MEMBERS);
+            .when(chatMessageDeliveryService).deliver(SAVED_ID, chatMessage, List.of(), RECEIVERS);
+
+        // act
+        Throwable thrown = catchThrowable(() -> eventConsumer.consumeChatSendMessage(chatMessage.toByteArray()));
+
+        // assert : 알림은 전달 전에 이미 발행됐다 (재시도에서는 다시 발행하지 않으므로 여기서 놓치면 안 된다)
+        assertThat(thrown).isInstanceOf(DeliveryFailedException.class);
+        verify(chatMessageRepository).saveOnce(any());
+        verify(chatNotificationPublisher).publish(SAVED_ID, chatMessage, 0, List.of(9L));
+    }
+
+    // ── 알림 (chat-notification) ─────────────────────────────────
+
+    @Test
+    @DisplayName("success case : 처음 저장한 메시지는 오프라인 멤버 알림을 전달보다 먼저 발행한다")
+    void 처음_저장한_메시지는_오프라인_멤버_알림을_전달보다_먼저_발행한다() {
+        // arrange
+        ChatMessage chatMessage = message("점심 뭐 먹을까요?");
+        when(chatAttachmentResolver.resolve(chatMessage)).thenReturn(List.of());
+        givenSavedAs(SAVED_ID);
+
+        // act
+        eventConsumer.consumeChatSendMessage(chatMessage.toByteArray());
+
+        // assert
+        InOrder order = inOrder(chatNotificationPublisher, chatMessageDeliveryService);
+        order.verify(chatNotificationPublisher).publish(SAVED_ID, chatMessage, 0, List.of(9L));
+        order.verify(chatMessageDeliveryService).deliver(SAVED_ID, chatMessage, List.of(), RECEIVERS);
+    }
+
+    @Test
+    @DisplayName("success case : 이미 저장돼 있던 메시지(재시도 / 중복 발행 / DLT 재발행)는 전달만 다시 하고 알림은 다시 발행하지 않는다")
+    void 이미_저장돼_있던_메시지는_전달만_다시_하고_알림은_다시_발행하지_않는다() {
+        // arrange
+        ChatMessage chatMessage = message("hello").toBuilder().setEventId("event-1").build();
+        when(chatAttachmentResolver.resolve(chatMessage)).thenReturn(List.of());
+        givenAlreadySavedAs(SAVED_ID);
+
+        // act
+        eventConsumer.consumeChatSendMessage(chatMessage.toByteArray());
+
+        // assert
+        verify(chatMessageDeliveryService).deliver(SAVED_ID, chatMessage, List.of(), RECEIVERS);
+        verifyNoInteractions(chatNotificationPublisher);
+    }
+
+    @Test
+    @DisplayName("fail case : 접속 위치 조회가 실패하면 알림도 전달도 하지 않고 예외를 던진다 (재시도 토픽으로)")
+    void 접속_위치_조회가_실패하면_알림도_전달도_하지_않고_예외를_던진다() {
+        // arrange
+        ChatMessage chatMessage = message("hello");
+        when(chatAttachmentResolver.resolve(chatMessage)).thenReturn(List.of());
+        givenSavedAs(SAVED_ID);
+        when(chatMessageDeliveryService.locate(MEMBERS)).thenThrow(new IllegalStateException("redis down"));
 
         // act
         Throwable thrown = catchThrowable(() -> eventConsumer.consumeChatSendMessage(chatMessage.toByteArray()));
 
         // assert
-        assertThat(thrown).isInstanceOf(DeliveryFailedException.class);
-        verify(chatMessageRepository).saveOnce(any());
+        assertThat(thrown).isInstanceOf(IllegalStateException.class);
+        verifyNoInteractions(chatNotificationPublisher);
+        verify(chatMessageDeliveryService, never()).deliver(any(), any(), any(), any());
     }
 
     @Test
@@ -225,7 +294,7 @@ class EventConsumerUnitTest {
 
         // assert
         verify(chatMessageRepository, never()).saveOnce(any());
-        verifyNoInteractions(chatMessageDeliveryService, chatAttachmentResolver);
+        verifyNoInteractions(chatMessageDeliveryService, chatAttachmentResolver, chatNotificationPublisher);
     }
 
     // ── 리액션 ──────────────────────────────────────────────────
@@ -256,6 +325,8 @@ class EventConsumerUnitTest {
         // assert
         verify(chatMessageDeliveryService).deliverReaction(7L, MESSAGE_ID, after, MEMBERS);
         verify(chatMessageRepository, never()).removeReaction(any(), any(), any(), any());
+        // 리액션은 알림을 만들지 않는다
+        verifyNoInteractions(chatNotificationPublisher);
     }
 
     @Test
@@ -270,6 +341,7 @@ class EventConsumerUnitTest {
         // assert
         verify(chatMessageDeliveryService).deliverReaction(7L, MESSAGE_ID, List.of(), MEMBERS);
         verify(chatMessageRepository, never()).addReaction(any(), any(), any(), any());
+        verifyNoInteractions(chatNotificationPublisher);
     }
 
     @Test
@@ -323,9 +395,22 @@ class EventConsumerUnitTest {
             .setPublishDt(1_700_000_000_000L).build();
     }
 
+    /**
+     * 처음 저장 : MongoDB 가 넘긴 createDt 그대로 넣은 문서를 돌려준다
+     */
     private void givenSavedAs(String id) {
         when(chatMessageRepository.saveOnce(any())).thenAnswer(invocation ->
-            com.distributed.chat.system.mongodb.collection.ChatMessage.builder().id(new ObjectId(id)).build());
+            com.distributed.chat.system.mongodb.collection.ChatMessage.builder().id(new ObjectId(id))
+                .createDt(invocation.<com.distributed.chat.system.mongodb.collection.ChatMessage>getArgument(0).getCreateDt()).build());
+    }
+
+    /**
+     * 이미 저장돼 있음 : 예전에 저장된 문서(다른 createDt)를 그대로 돌려준다
+     */
+    private void givenAlreadySavedAs(String id) {
+        when(chatMessageRepository.saveOnce(any())).thenAnswer(invocation ->
+            com.distributed.chat.system.mongodb.collection.ChatMessage.builder().id(new ObjectId(id))
+                .createDt(Instant.ofEpochMilli(1_600_000_000_000L)).build());
     }
 
     private com.distributed.chat.system.mongodb.collection.ChatMessage savedMessage() {

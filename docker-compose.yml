@@ -149,6 +149,41 @@ services:
       mysql-container:
         condition: service_healthy
 
+  # 접속 상태(online / away / offline) 조회. 상태는 채팅 서버가 Redis presence:{userId} 에 쓴다
+  connection-status:
+    <<: *app
+    build:
+      context: .
+      args:
+        MODULE: distributed-chat-system-connection-status
+    ports:
+      - "7680:7680"
+    depends_on:
+      <<: *app-depends
+      mysql-container:
+        condition: service_healthy
+
+  # 오프라인 수신자에게 웹 푸시 (chat-notification 토픽 소비). VAPID 키는 VAPID_* 환경변수, 없으면 처음 뜰 때 만들어 MySQL 에 고정
+  notification:
+    <<: *app
+    build:
+      context: .
+      args:
+        MODULE: distributed-chat-system-notification
+    ports:
+      - "7690:7690"
+    environment:
+      <<: *app-env
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+    depends_on:
+      <<: *app-depends
+      mysql-container:
+        condition: service_healthy
+      kafka-1:
+        condition: service_started
+
   # 채팅 서버는 2대로 띄워 서버간 전달(컨슈머 경유)을 확인한다. 포트는 랜덤(server.port: 0)
   chatting-1:
     <<: *app

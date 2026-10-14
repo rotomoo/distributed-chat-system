@@ -3,6 +3,7 @@ package com.distributed.chat.system.chatting.base.handler;
 import com.distributed.chat.system.chatting.base.presence.UserLocationRegistry;
 import com.distributed.chat.system.chatting.web.controller.feign.KafkaProducerClient;
 import com.distributed.chat.system.common.exception.ErrorCode;
+import com.distributed.chat.system.common.redis.ChatPresenceKeys;
 import com.distributed.chat.system.common.util.NetworkUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,6 +11,7 @@ import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -37,6 +39,8 @@ import protobuf.EdaChatMessage.ChatReactionDelivery;
  * <ul>
  *   <li>서버 메모리 : userId → { 웹소켓 세션ID → 세션 } (기기마다 소켓이 따로 있으므로 모두 보관)</li>
  *   <li>Redis {@code {userId}} : 그 유저의 기기들이 모인 채팅 서버 ({@link UserLocationRegistry}). 컨슈머 / api-gateway 가 읽는다</li>
+ *   <li>Redis {@code presence:{userId}} : 접속 상태 online / away (TTL 60초). connection-status 가 읽는다.
+ *       기기별 상태(active / away)는 이 서버 메모리에 두고, 기기 하나라도 active 면 online, 모두 away 면 away 로 합쳐서 쓴다</li>
  * </ul>
  * 서버 안의 경쟁(같은 유저의 동시 접속/해제)은 {@link ConcurrentHashMap#compute} 로 유저 단위 직렬화한다.
  * <p>
@@ -60,7 +64,12 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
 
     private static final TextMessage PING = new TextMessage("{\"type\":\"ping\"}");
 
-    private final Map<String, Map<String, WebSocketSession>> webSocketSessionMap = new ConcurrentHashMap<>();
+    /**
+     * 받는 프레임마다 접속 상태 TTL(60초)을 갱신하되 유저당 이 주기에 1번만 쓴다 (하트비트 pong 이 25초마다 오므로 TTL 안에 2번 이상 갱신된다)
+     */
+    static final Duration PRESENCE_REFRESH_INTERVAL = Duration.ofSeconds(20);
+
+    private final Map<String, UserSessions> webSocketSessionMap = new ConcurrentHashMap<>();
 
     /**
      * 웹소켓 세션 ID → 마지막으로 프레임을 받은 시각 (epoch millis). 하트비트가 응답 없는 소켓을 찾는 데 쓴다
@@ -99,8 +108,10 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
                 return sessions;
             }
             accepted.set(true);
-            Map<String, WebSocketSession> userSessions = sessions == null ? new ConcurrentHashMap<>() : sessions;
-            userSessions.put(webSocketSession.getId(), concurrentSession);
+            UserSessions userSessions = sessions == null ? new UserSessions() : sessions;
+            userSessions.sessions.put(webSocketSession.getId(), concurrentSession);
+            // 새 기기는 active → 처음 붙었거나 모두 away 였으면 online 으로 쓴다
+            writePresenceIfChanged(userId, chatServerUri, userSessions);
             return userSessions;
         });
 
@@ -127,7 +138,10 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
      *   <li>{"type": "message", "channelId": 1, "message": "안녕하세요", "attachments": [{"fileId": "..."}]}
      *       : 첨부가 있으면 message 는 비어도 된다. 첨부 최대 10개 (이름/형식/크기는 컨슈머가 GridFS 에서 채운다)</li>
      *   <li>{"type": "reaction", "channelId": 1, "messageId": "...", "emoji": "👍", "action": "add" | "remove"}</li>
+     *   <li>{"type": "presence", "state": "away" | "active"} : 이 기기의 상태 (입력 없음 → away, 다시 움직이면 active)</li>
+     *   <li>{"type": "pong"} : 하트비트 응답</li>
      * </ul>
+     * 어떤 프레임이든 받으면 살아 있는 것 → 마지막 수신 시각과 접속 상태 TTL 을 갱신한다.
      * 형식이 틀리면 보낸 사람에게 {"type": "error", ...} 를 돌려주고 발행하지 않는다 (채널 멤버 확인은 컨슈머가 한다)
      */
     @Override
@@ -135,6 +149,7 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         // 어떤 프레임이든 오면 살아 있는 것 (pong 이 아니어도)
         lastSeenAtBySession.put(webSocketSession.getId(), clock.millis());
         String userId = (String) webSocketSession.getAttributes().get("userId");
+        refreshPresenceIfDue(webSocketSession, userId);
 
         JsonNode payload;
         try {
@@ -147,6 +162,7 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         switch (payload.path("type").asText()) {
             case "message" -> handleChatMessage(webSocketSession, userId, payload);
             case "reaction" -> handleReaction(webSocketSession, userId, payload);
+            case "presence" -> handlePresence(webSocketSession, userId, payload);
             case "pong" -> {
                 // 하트비트 응답. 위에서 마지막 수신 시각을 이미 갱신했다
             }
@@ -205,6 +221,80 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
     }
 
     /**
+     * 이 기기의 상태를 바꾸고, 합친 상태(하나라도 active 면 online)가 바뀌었을 때만 Redis 에 쓴다
+     */
+    private void handlePresence(WebSocketSession webSocketSession, String userId, JsonNode payload) throws IOException {
+        Boolean away = switch (payload.path("state").asText()) {
+            case "away" -> true;
+            case "active" -> false;
+            default -> null;
+        };
+        if (away == null) {
+            sendError(webSocketSession, ErrorCode.INVALID_CHAT_MESSAGE);
+            return;
+        }
+
+        String chatServerUri = (String) webSocketSession.getAttributes().get("chatServerUri");
+        this.webSocketSessionMap.computeIfPresent(userId, (key, userSessions) -> {
+            if (!userSessions.sessions.containsKey(webSocketSession.getId())) {
+                return userSessions;
+            }
+            if (away) {
+                userSessions.awaySessionIds.add(webSocketSession.getId());
+            } else {
+                userSessions.awaySessionIds.remove(webSocketSession.getId());
+            }
+            writePresenceIfChanged(userId, chatServerUri, userSessions);
+            return userSessions;
+        });
+    }
+
+    /**
+     * 마지막으로 쓴 지 {@link #PRESENCE_REFRESH_INTERVAL} 이 지났으면 지금 상태로 다시 써서 TTL 을 60초로 늘린다.
+     * 대부분의 프레임은 잠금 없이 시각만 보고 돌아간다
+     */
+    private void refreshPresenceIfDue(WebSocketSession webSocketSession, String userId) {
+        UserSessions current = this.webSocketSessionMap.get(userId);
+        if (current == null || !current.isPresenceRefreshDue(clock.millis())) {
+            return;
+        }
+
+        String chatServerUri = (String) webSocketSession.getAttributes().get("chatServerUri");
+        this.webSocketSessionMap.computeIfPresent(userId, (key, userSessions) -> {
+            if (userSessions.sessions.containsKey(webSocketSession.getId()) && userSessions.isPresenceRefreshDue(clock.millis())) {
+                writePresence(userId, chatServerUri, userSessions);
+            }
+            return userSessions;
+        });
+    }
+
+    /**
+     * 유저 단위 잠금(webSocketSessionMap.compute) 안에서만 부른다
+     */
+    private void writePresenceIfChanged(String userId, String chatServerUri, UserSessions userSessions) {
+        if (!userSessions.presence().equals(userSessions.writtenPresence)) {
+            writePresence(userId, chatServerUri, userSessions);
+        }
+    }
+
+    /**
+     * 유저 단위 잠금 안에서만 부른다. Redis 오류는 접속 / 메시지 처리를 막지 않도록 로그만 남긴다 (다음 프레임에서 다시 쓴다)
+     */
+    private void writePresence(String userId, String chatServerUri, UserSessions userSessions) {
+        String presence = userSessions.presence();
+        try {
+            if (!userLocationRegistry.writePresence(userId, chatServerUri, presence)) {
+                // 위치 키가 이 서버가 아니다 (다른 서버로 넘어감). 상태는 그 서버가 쓴다
+                log.info("userId : {} location is not {}, skip presence {}", userId, chatServerUri, presence);
+            }
+            userSessions.writtenPresence = presence;
+            userSessions.presenceWrittenAt = clock.millis();
+        } catch (RuntimeException e) {
+            log.warn("presence write fail userId : {}, error : {}", userId, e.getMessage());
+        }
+    }
+
+    /**
      * attachments : [{"fileId": "ObjectId"}] (없으면 빈 목록). 형식이 틀리거나 10개를 넘으면 null.
      * 채팅 서버는 형식만 본다 (파일이 이 채널에 보낸 사람이 올린 것인지는 컨슈머가 GridFS 로 확인)
      */
@@ -260,10 +350,16 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         String userId = (String) webSocketSession.getAttributes().get("userId");
         String chatServerUri = (String) webSocketSession.getAttributes().get("chatServerUri");
 
-        // 끊긴 기기만 뺀다. 이 서버에서 그 유저의 마지막 기기일 때만 Redis {userId} 를 지운다 (값이 아직 이 서버일 때만)
+        // 끊긴 기기만 뺀다. 이 서버에서 그 유저의 마지막 기기일 때만 Redis {userId}, presence:{userId} 를 지운다 (위치 값이 아직 이 서버일 때만)
         this.webSocketSessionMap.computeIfPresent(userId, (key, userSessions) -> {
-            if (userSessions.remove(webSocketSession.getId()) == null || !userSessions.isEmpty()) {
-                return userSessions.isEmpty() ? null : userSessions;
+            if (userSessions.sessions.remove(webSocketSession.getId()) == null) {
+                return userSessions.sessions.isEmpty() ? null : userSessions;
+            }
+            userSessions.awaySessionIds.remove(webSocketSession.getId());
+            if (!userSessions.sessions.isEmpty()) {
+                // 유일한 active 기기가 끊겼으면 남은 기기가 모두 away → away 로 바꾼다
+                writePresenceIfChanged(userId, chatServerUri, userSessions);
+                return userSessions;
             }
             userLocationRegistry.release(userId, chatServerUri);
             return null;
@@ -332,8 +428,8 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
      */
     public void heartbeat(Duration timeout) {
         long now = clock.millis();
-        for (Map<String, WebSocketSession> userSessions : webSocketSessionMap.values()) {
-            for (WebSocketSession session : userSessions.values()) {
+        for (UserSessions userSessions : webSocketSessionMap.values()) {
+            for (WebSocketSession session : userSessions.sessions.values()) {
                 long lastSeenAt = lastSeenAtBySession.getOrDefault(session.getId(), now);
                 if (now - lastSeenAt > timeout.toMillis()) {
                     log.info("heartbeat timeout session : {}, silent {}ms", session.getId(), now - lastSeenAt);
@@ -374,7 +470,40 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
      * 이 서버에 붙어 있는 유저의 기기(소켓) 목록
      */
     public Collection<WebSocketSession> getSessions(String userId) {
-        Map<String, WebSocketSession> userSessions = this.webSocketSessionMap.get(userId);
-        return userSessions == null ? List.of() : userSessions.values();
+        UserSessions userSessions = this.webSocketSessionMap.get(userId);
+        return userSessions == null ? List.of() : userSessions.sessions.values();
+    }
+
+    /**
+     * 한 유저가 이 서버에 붙인 기기들과 접속 상태. 바꾸는 건 webSocketSessionMap.compute 안에서만 한다 (유저 단위 직렬화)
+     */
+    private static final class UserSessions {
+
+        /**
+         * 웹소켓 세션 ID → 세션. 전달(deliver) / 하트비트는 잠금 없이 읽으므로 concurrent
+         */
+        private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
+
+        /**
+         * away 를 보낸 기기 (웹소켓 세션 ID). 없으면 active
+         */
+        private final Set<String> awaySessionIds = new HashSet<>();
+
+        /**
+         * 마지막으로 Redis 에 쓴 상태와 시각 (epoch millis). 시각은 잠금 밖에서 갱신 주기를 미리 볼 때 읽는다
+         */
+        private String writtenPresence;
+        private volatile long presenceWrittenAt;
+
+        /**
+         * 기기 하나라도 active 면 online, 모두 away 면 away
+         */
+        String presence() {
+            return awaySessionIds.containsAll(sessions.keySet()) ? ChatPresenceKeys.AWAY : ChatPresenceKeys.ONLINE;
+        }
+
+        boolean isPresenceRefreshDue(long now) {
+            return now - presenceWrittenAt >= PRESENCE_REFRESH_INTERVAL.toMillis();
+        }
     }
 }

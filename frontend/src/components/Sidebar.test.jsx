@@ -34,7 +34,7 @@ function renderSidebar(props = {}) {
       selectedId={10}
       me={ME}
       status="connected"
-      presenceOf={(userId) => userId === 2}
+      presenceOf={(userId) => ({ 2: 'online', 3: 'offline' })[userId]}
       {...handlers}
       {...props}
     />,
@@ -84,13 +84,14 @@ describe('[단위] Sidebar', () => {
     expect(handlers.onSelect.mock.calls).toEqual([[11], [13]])
   })
 
-  it('success case : DM 에는 상대 접속 여부를 초록 점 / 빈 원으로 보여 준다', () => {
+  it('success case : DM 에는 상대 접속 상태를 온라인 / 자리 비움 / 오프라인 점으로 보여 준다', () => {
     // arrange & act
-    renderSidebar()
+    renderSidebar({ presenceOf: (userId) => ({ 2: 'online', 3: 'offline', 4: 'away' })[userId], dms: [...DMS, { channelId: 15, userId: 4, userName: '지수', unreadCount: 0 }] })
 
     // assert
     expect(navItem('영희').querySelector('.presence-dot.online')).not.toBeNull()
     expect(navItem('민수').querySelector('.presence-dot.offline')).not.toBeNull()
+    expect(navItem('지수').querySelector('.presence-dot.away')).not.toBeNull()
   })
 
   it('success case : 대화 찾기에 입력하면 이름이 맞는 채널 / DM 만 남는다', () => {

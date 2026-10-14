@@ -28,18 +28,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 @DisplayName("[통합] 팀 / 채널 / DM API 테스트")
 // 테스트 JVM 이 실행 중인 스택의 Eureka 에 등록되면 게이트웨이가 실제 요청을 테스트로 보낼 수 있으므로 끈다
-// 살아 있는 채팅 서버는 Eureka 대신 simple discovery 로 하나 둔다 (접속 상태 online 확인용)
-@SpringBootTest(properties = {
-    "eureka.client.enabled=false",
-    "spring.cloud.discovery.client.simple.instances.chatting[0].uri=http://10.255.255.1:40001"
-})
+@SpringBootTest(properties = "eureka.client.enabled=false")
 @AutoConfigureMockMvc
 @Transactional
 class ChannelApiIntegrationTest {
@@ -54,9 +49,6 @@ class ChannelApiIntegrationTest {
     private ChatMessageRepository chatMessageRepository;
 
     @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
-
-    @Autowired
     private EntityManager entityManager;
 
     private Long alice;
@@ -64,10 +56,9 @@ class ChannelApiIntegrationTest {
     private Long carol;
 
     /**
-     * MongoDB / Redis 는 트랜잭션 롤백이 안 되므로 테스트가 만든 것을 직접 지운다
+     * MongoDB 는 트랜잭션 롤백이 안 되므로 테스트가 만든 것을 직접 지운다
      */
     private final List<ChatMessage> savedMessages = new ArrayList<>();
-    private final List<String> redisKeys = new ArrayList<>();
 
     @BeforeEach
     void setup() {
@@ -79,7 +70,6 @@ class ChannelApiIntegrationTest {
     @AfterEach
     void tearDown() {
         chatMessageRepository.deleteAll(savedMessages);
-        redisTemplate.delete(redisKeys);
     }
 
     @Test
@@ -442,23 +432,19 @@ class ChannelApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("success case : 팀 멤버 목록에 살아 있는 채팅 서버에 연결된 사람만 online 으로 표시한다")
-    void 팀_멤버_목록에_살아_있는_채팅_서버에_연결된_사람만_online_으로_표시한다() throws Exception {
+    @DisplayName("success case : 팀 멤버 목록은 userId / userName 만 주고 접속 상태(online)는 주지 않는다")
+    void 팀_멤버_목록은_userId_userName_만_주고_접속_상태는_주지_않는다() throws Exception {
         // given
         Long teamId = createTeam(alice, uniqueTeamName());
         mockMvc.perform(as(bob, post("/v1/private/api/team/" + teamId + "/join"))).andExpect(status().isOk());
-        mockMvc.perform(as(carol, post("/v1/private/api/team/" + teamId + "/join"))).andExpect(status().isOk());
-        redisKeys.addAll(List.of(String.valueOf(bob), String.valueOf(carol)));
-        // 채팅 서버가 쓰는 모양 그대로 : bob 은 살아 있는 서버, carol 은 죽은 서버(Eureka 에 없음)를 가리킴, alice 는 키 없음
-        redisTemplate.opsForValue().set(String.valueOf(bob), "ws://10.255.255.1:40001");
-        redisTemplate.opsForValue().set(String.valueOf(carol), "ws://10.255.255.2:40002");
 
-        // when & then
+        // when & then : 접속 상태는 connection-status 서버 한 곳에서만 준다
         mockMvc.perform(as(alice, get("/v1/private/api/team/" + teamId + "/members")))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.list[?(@.userId == " + alice + ")].online").value(Matchers.contains(false)))
-            .andExpect(jsonPath("$.data.list[?(@.userId == " + bob + ")].online").value(Matchers.contains(true)))
-            .andExpect(jsonPath("$.data.list[?(@.userId == " + carol + ")].online").value(Matchers.contains(false)));
+            .andExpect(jsonPath("$.data.list[*].userId").value(Matchers.contains(alice.intValue(), bob.intValue())))
+            .andExpect(jsonPath("$.data.list[0].userName").isNotEmpty())
+            .andExpect(jsonPath("$.data.list[0].online").doesNotExist())
+            .andExpect(jsonPath("$.data.list[1].online").doesNotExist());
     }
 
     private ChatMessage saveMessage(Long channelId, Long sendUserId, String content) {

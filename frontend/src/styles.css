@@ -178,6 +178,11 @@ button.avatar:hover {
   box-shadow: inset 0 0 0 1.5px var(--dot-hollow, var(--sidebar-text));
 }
 
+/* 자리 비움 : 노란 테두리의 빈 원 */
+.presence-dot.away {
+  box-shadow: inset 0 0 0 2px #ecb22e;
+}
+
 /* 흰 바탕 위의 접속 점 */
 .channel-title,
 .pick-item {
@@ -1439,6 +1444,10 @@ button.avatar:hover {
   color: var(--text-muted);
 }
 
+.profile-presence.away {
+  color: #a16207;
+}
+
 /* ── 모달 ─────────────────────────────────────────────── */
 .modal-backdrop {
   position: fixed;
@@ -1732,4 +1741,84 @@ button.avatar:hover {
     width: auto;
     z-index: 40;
   }
+}
+
+/* ── 알림 ─────────────────────────────────────────────── */
+.notify-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 6px 16px;
+  background: #1264a3;
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.notify-bar-enable {
+  padding: 3px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.notify-bar-enable:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.notify-bar-close {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+}
+
+.nav-item.muted:not(.active) {
+  opacity: 0.6;
+}
+
+.muted-icon {
+  font-size: 11px;
+}
+
+.muted-mark {
+  font-size: 14px;
+}
+
+.header-spacer {
+  flex: 1;
+}
+
+.header-error {
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.header-menu {
+  position: relative;
+}
+
+.header-menu-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 140px;
+  padding: 6px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  z-index: 25;
+}
+
+.header-menu-list button {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  text-align: left;
+}
+
+.header-menu-list button:hover {
+  background: var(--link);
+  color: #ffffff;
 }

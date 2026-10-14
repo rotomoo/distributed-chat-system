@@ -13,6 +13,8 @@ import static org.mockito.Mockito.verify;
 
 import com.distributed.chat.system.kafka.consumer.base.kafka.DeadLetterHandler;
 import com.distributed.chat.system.kafka.consumer.service.ChatMessageDeliveryService;
+import com.distributed.chat.system.kafka.consumer.service.ChatNotificationPublisher;
+import com.distributed.chat.system.kafka.consumer.service.ChatReceivers;
 import com.distributed.chat.system.kafka.consumer.service.DeliveryFailedException;
 import com.distributed.chat.system.mongodb.repository.ChatMessageRepository;
 import com.distributed.chat.system.mysql.repository.ChannelUserRepository;
@@ -87,6 +89,12 @@ class EventConsumerRetryIntegrationTest {
     @MockBean
     private ChatMessageDeliveryService chatMessageDeliveryService;
 
+    /**
+     * 알림 발행 횟수만 본다 (처음 저장한 시도에서 한 번만. 실제 발행 경로는 EventConsumerEndToEndIntegrationTest)
+     */
+    @MockBean
+    private ChatNotificationPublisher chatNotificationPublisher;
+
     @SpyBean
     private DeadLetterHandler deadLetterHandler;
 
@@ -102,6 +110,8 @@ class EventConsumerRetryIntegrationTest {
     @BeforeEach
     void setup() {
         org.mockito.Mockito.when(channelUserRepository.findMemberUserIds(org.mockito.ArgumentMatchers.anyLong())).thenReturn(List.of(5L, 1L));
+        // 1 은 오프라인 (알림 대상)
+        org.mockito.Mockito.when(chatMessageDeliveryService.locate(any())).thenReturn(new ChatReceivers(Map.of("10.0.0.1:1111", List.of(5L)), List.of(1L)));
         Map<String, Object> props = KafkaTestUtils.producerProps(embeddedKafkaBroker);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
@@ -131,6 +141,8 @@ class EventConsumerRetryIntegrationTest {
         assertThat(documents(eventId)).isEqualTo(1);
         verify(chatMessageRepository, times(3)).saveOnce(argThat(message -> message != null && eventId.equals(message.getEventId())));
         verify(chatMessageDeliveryService, times(1)).deliver(anyString(), withEventId(eventId), any(), any());
+        // 세 번째 시도에서 처음 저장됐으므로 알림은 그때 한 번
+        verify(chatNotificationPublisher, times(1)).publish(anyString(), withEventId(eventId), eq(0), eq(List.of(1L)));
     }
 
     @Test
@@ -149,6 +161,7 @@ class EventConsumerRetryIntegrationTest {
         assertThat(documents(eventId)).isZero();
         verify(chatMessageRepository, times(4)).saveOnce(argThat(message -> message != null && eventId.equals(message.getEventId())));
         verify(chatMessageDeliveryService, times(0)).deliver(anyString(), withEventId(eventId), any(), any());
+        verify(chatNotificationPublisher, times(0)).publish(anyString(), withEventId(eventId), eq(0), any());
     }
 
     @Test
@@ -167,6 +180,8 @@ class EventConsumerRetryIntegrationTest {
             verify(chatMessageDeliveryService, times(2)).deliver(messageIds.capture(), withEventId(eventId), any(), any()));
         assertThat(messageIds.getAllValues()).hasSize(2).containsOnly(messageIds.getAllValues().get(0));
         assertThat(documents(eventId)).isEqualTo(1);
+        // 두 번째 발행은 이미 저장된 문서를 받으므로 알림을 다시 만들지 않는다
+        verify(chatNotificationPublisher, times(1)).publish(eq(messageIds.getValue()), withEventId(eventId), eq(0), eq(List.of(1L)));
     }
 
     @Test
@@ -186,6 +201,7 @@ class EventConsumerRetryIntegrationTest {
             verify(chatMessageDeliveryService, times(2)).deliver(messageIds.capture(), withEventId(eventId), any(), any()));
         assertThat(messageIds.getAllValues()).containsOnly(messageIds.getAllValues().get(0));
         assertThat(documents(eventId)).isEqualTo(1);
+        verify(chatNotificationPublisher, times(1)).publish(eq(messageIds.getValue()), withEventId(eventId), eq(0), eq(List.of(1L)));
         verify(chatMessageRepository, atLeast(2)).saveOnce(argThat(message -> message != null && eventId.equals(message.getEventId())));
     }
 
@@ -204,6 +220,8 @@ class EventConsumerRetryIntegrationTest {
         assertThat(dltOutcome(eventId)).isEqualTo(DeadLetterHandler.Outcome.DELIVERY_DROPPED);
         verify(chatMessageDeliveryService, times(4)).deliver(anyString(), withEventId(eventId), any(), any());
         assertThat(documents(eventId)).isEqualTo(1);
+        // 전달은 네 번 시도했지만 알림은 처음 저장한 첫 시도에서 한 번만
+        verify(chatNotificationPublisher, times(1)).publish(anyString(), withEventId(eventId), eq(0), eq(List.of(1L)));
     }
 
     @Test

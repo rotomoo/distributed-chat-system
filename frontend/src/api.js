@@ -90,15 +90,21 @@ export function joinTeam(teamId) {
   return request(`${PRIVATE}/team/${teamId}/join`, { method: 'POST' }, '팀 가입에 실패했습니다.')
 }
 
-// 팀 멤버와 접속 여부 [{ userId, userName, online }]. 서버가 online 을 안 주면 오프라인으로 본다
-export async function getTeamMembers(teamId) {
-  return (await list(`${PRIVATE}/team/${teamId}/members`)).map((m) => ({ ...m, online: m.online === true }))
+// 팀 멤버 [{ userId, userName }] (이름용. 접속 상태는 getPresence)
+export function getTeamMembers(teamId) {
+  return list(`${PRIVATE}/team/${teamId}/members`)
+}
+
+// 팀 멤버 접속 상태 (connection-status 서버) [{ userId, status: online | away | offline }].
+// 서버가 없거나 실패하면 빈 배열 → 모두 오프라인으로 보인다
+export function getPresence(teamId) {
+  return list(`${PRIVATE}/presence?teamId=${teamId}`)
 }
 
 // ── 채널 / DM ─────────────────────────────────────────
 
-// 서버가 unreadCount 를 안 주면 0
-const withUnread = (items) => items.map((item) => ({ ...item, unreadCount: item.unreadCount ?? 0 }))
+// 서버가 unreadCount / muted 를 안 주면 0 / false
+const withUnread = (items) => items.map((item) => ({ ...item, unreadCount: item.unreadCount ?? 0, muted: item.muted === true }))
 
 // 팀의 공개 채널 [{ channelId, channelName, joined, unreadCount }]
 export async function getChannels(teamId) {
@@ -134,6 +140,11 @@ export async function getChannelMessages(channelId, { before, after, size } = {}
   if (size) params.set('size', size)
   const data = await request(`${PRIVATE}/channel/${channelId}/messages?${params}`, undefined, '메시지를 불러오지 못했습니다.')
   return { list: data.list, hasNext: data.hasNext === true }
+}
+
+// 이 채널 알림 끄기 / 켜기 (배지는 그대로 센다)
+export function setChannelMuted(channelId, muted) {
+  return request(`${PRIVATE}/channel/${channelId}/notification`, postJson({ muted }, 'PUT'), '알림 설정을 바꾸지 못했어요')
 }
 
 // 여기까지 읽음. 서버는 기존 값보다 뒤일 때만 갱신한다
@@ -180,6 +191,22 @@ export function uploadFile(channelId, file, onProgress) {
   xhr.open('POST', `${PRIVATE}/file`)
   xhr.send(form)
   return { promise, abort: () => xhr.abort() }
+}
+
+// ── 웹 푸시 (notification 서버) ─────────────────────────
+
+// → base64url 공개키
+export async function getVapidPublicKey() {
+  return (await request(`${PRIVATE}/notification/vapid-public-key`, undefined, '알림 키를 받지 못했어요')).publicKey
+}
+
+// PushSubscription.toJSON() = { endpoint, keys: { p256dh, auth } }. 같은 endpoint 면 서버가 갱신한다
+export function saveSubscription(subscription) {
+  return request(`${PRIVATE}/notification/subscriptions`, postJson(subscription), '알림 구독을 저장하지 못했어요')
+}
+
+export function deleteSubscription(endpoint) {
+  return request(`${PRIVATE}/notification/subscriptions`, postJson({ endpoint }, 'DELETE'), '알림 구독을 지우지 못했어요')
 }
 
 export function webSocketUrl() {

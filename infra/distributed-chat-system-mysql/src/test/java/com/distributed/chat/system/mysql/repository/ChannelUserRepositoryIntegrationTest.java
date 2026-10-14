@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
-@DisplayName("[통합] ChannelUserRepository 읽음 위치 테스트")
+@DisplayName("[통합] ChannelUserRepository 읽음 위치 / 알림 음소거 테스트")
 @SpringBootTest
 @Transactional
 class ChannelUserRepositoryIntegrationTest {
@@ -108,6 +108,55 @@ class ChannelUserRepositoryIntegrationTest {
 
         // then
         assertThat(memberIds).containsExactlyInAnyOrder(userId, userId + 1);
+    }
+
+    @Test
+    @DisplayName("success case : 알림 음소거를 켜고 끌 수 있고 기본값은 false 다 (같은 값을 다시 써도 찾은 행 1)")
+    void 알림_음소거를_켜고_끌_수_있고_기본값은_false_다() {
+        // given
+        saveMember(null, false);
+
+        // when
+        boolean initial = channelUserRepository.findById(new ChannelUserPk(channelId, userId)).orElseThrow().isNotificationMuted();
+        int muted = channelUserRepository.updateNotificationMuted(channelId, userId, true);
+        int again = channelUserRepository.updateNotificationMuted(channelId, userId, true);
+        boolean afterMute = channelUserRepository.findById(new ChannelUserPk(channelId, userId)).orElseThrow().isNotificationMuted();
+        channelUserRepository.updateNotificationMuted(channelId, userId, false);
+
+        // then
+        assertThat(initial).isFalse();
+        assertThat(muted).isEqualTo(1);
+        assertThat(again).isEqualTo(1);
+        assertThat(afterMute).isTrue();
+        assertThat(channelUserRepository.findById(new ChannelUserPk(channelId, userId)).orElseThrow().isNotificationMuted()).isFalse();
+    }
+
+    @Test
+    @DisplayName("fail case : 나간 멤버나 멤버가 아니면 알림 음소거가 바뀌지 않는다 (0)")
+    void 나간_멤버나_멤버가_아니면_알림_음소거가_바뀌지_않는다() {
+        // given
+        saveMember(null, true);
+
+        // when & then
+        assertThat(channelUserRepository.updateNotificationMuted(channelId, userId, true)).isZero();
+        assertThat(channelUserRepository.updateNotificationMuted(channelId, userId + 1, true)).isZero();
+    }
+
+    @Test
+    @DisplayName("success case : 알림 받을 사람은 넘긴 사람 중 나가지 않았고 음소거하지 않은 이 채널 멤버뿐이다")
+    void 알림_받을_사람은_나가지_않았고_음소거하지_않은_이_채널_멤버뿐이다() {
+        // given : userId 멤버, +1 음소거, +2 나감, +3 다른 채널 멤버, +4 목록에 없음
+        saveMember(null, false);
+        channelUserRepository.saveAndFlush(ChannelUser.builder().channelId(channelId).userId(userId + 1).notificationMuted(true).deleteYn(false).build());
+        channelUserRepository.saveAndFlush(ChannelUser.builder().channelId(channelId).userId(userId + 2).deleteYn(true).build());
+        channelUserRepository.saveAndFlush(ChannelUser.builder().channelId(channelId + 1).userId(userId + 3).deleteYn(false).build());
+        channelUserRepository.saveAndFlush(ChannelUser.builder().channelId(channelId).userId(userId + 4).deleteYn(false).build());
+
+        // when
+        List<Long> unmuted = channelUserRepository.findUnmutedMemberUserIds(channelId, List.of(userId, userId + 1, userId + 2, userId + 3));
+
+        // then
+        assertThat(unmuted).containsExactly(userId);
     }
 
     private void saveMember(String lastReadMessageId, boolean deleted) {

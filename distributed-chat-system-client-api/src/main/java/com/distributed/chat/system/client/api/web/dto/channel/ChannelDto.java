@@ -28,7 +28,14 @@ public class ChannelDto {
     @Schema(name = "unreadCount", description = "안 읽은 메시지 수 (참여 안 한 채널은 0, 최대 100)", example = "3")
     private Integer unreadCount;
 
+    /**
+     * 채널 목록에서만 채운다 (참여 안 한 채널은 false)
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Schema(name = "muted", description = "이 채널 웹 푸시 알림을 껐는지", example = "false")
+    private Boolean muted;
+
     public ChannelDto(Long channelId, String channelName, Boolean joined) {
-        this(channelId, channelName, joined, null);
+        this(channelId, channelName, joined, null, null);
     }
 }

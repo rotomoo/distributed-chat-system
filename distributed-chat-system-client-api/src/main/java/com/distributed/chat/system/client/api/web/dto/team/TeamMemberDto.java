@@ -16,7 +16,4 @@ public class TeamMemberDto {
 
     @Schema(name = "userName", description = "회원 이름", example = "alice")
     private String userName;
-
-    @Schema(name = "online", description = "지금 채팅 서버에 연결된 기기가 하나라도 있는지", example = "true")
-    private Boolean online;
 }

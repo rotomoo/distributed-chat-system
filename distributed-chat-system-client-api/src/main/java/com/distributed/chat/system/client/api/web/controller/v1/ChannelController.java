@@ -1,6 +1,7 @@
 package com.distributed.chat.system.client.api.web.controller.v1;
 
 import com.distributed.chat.system.client.api.web.controller.v1.spec.ChannelControllerSpec;
+import com.distributed.chat.system.client.api.web.dto.channel.ChannelNotificationRequestDto;
 import com.distributed.chat.system.client.api.web.dto.channel.CreateChannelRequestDto;
 import com.distributed.chat.system.client.api.web.dto.channel.OpenDmRequestDto;
 import com.distributed.chat.system.client.api.web.dto.channel.ReadChannelRequestDto;
@@ -133,6 +134,22 @@ public class ChannelController implements ChannelControllerSpec {
     @PutMapping("/{channelId}/read")
     public ResponseEntity<?> markRead(@PathVariable Long channelId, @RequestBody ReadChannelRequestDto readChannelRequestDto) {
         ResponseData responseData = channelMessageService.markRead(channelId, readChannelRequestDto.getMessageId());
+
+        return ResponseEntity.ok(responseData);
+    }
+
+    /**
+     * 이 채널 웹 푸시 알림 끄기 / 켜기 (채널 멤버만)
+     *
+     * @param channelId
+     * @param channelNotificationRequestDto
+     * @return
+     */
+    @Override
+    @PutMapping("/{channelId}/notification")
+    public ResponseEntity<?> setNotification(@PathVariable Long channelId,
+        @RequestBody @Valid ChannelNotificationRequestDto channelNotificationRequestDto) {
+        ResponseData responseData = channelService.setNotificationMuted(channelId, channelNotificationRequestDto.getMuted());
 
         return ResponseEntity.ok(responseData);
     }

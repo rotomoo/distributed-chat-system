@@ -20,7 +20,6 @@ spring:
 
 eureka:
   client:
-    registry-fetch-interval-seconds: 5 # 접속 상태(online)에 채팅 서버 증감을 빨리 반영 (default 30s)
     service-url:
       defaultZone: http://localhost:7710/eureka/
 
@@ -60,7 +59,6 @@ spring:
 
 eureka:
   client:
-    registry-fetch-interval-seconds: 5 # 접속 상태(online)에 채팅 서버 증감을 빨리 반영 (default 30s)
     service-url:
       defaultZone: http://service-discovery:7710/eureka/
 

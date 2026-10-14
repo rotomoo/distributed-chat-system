@@ -290,6 +290,73 @@ class ChannelServiceUnitTest {
         assertThat(ChannelService.dmChannelName(7L, 3L)).isEqualTo("dm:3:7");
     }
 
+    // ── 알림 음소거 ─────────────────────────────────────────────
+
+    @Test
+    @DisplayName("success case : 채널 멤버는 알림을 끄고 켤 수 있다")
+    void 채널_멤버는_알림을_끄고_켤_수_있다() {
+        // arrange
+        when(channelUserRepository.updateNotificationMuted(100L, LOGIN_ID, true)).thenReturn(1);
+        when(channelUserRepository.updateNotificationMuted(100L, LOGIN_ID, false)).thenReturn(1);
+
+        // act
+        ResponseData<Map<String, Object>> muted = channelService.setNotificationMuted(100L, true);
+        ResponseData<Map<String, Object>> unmuted = channelService.setNotificationMuted(100L, false);
+
+        // assert
+        assertThat(muted.getData()).isEqualTo(Map.of("channelId", 100L, "muted", true));
+        assertThat(unmuted.getData()).isEqualTo(Map.of("channelId", 100L, "muted", false));
+    }
+
+    @Test
+    @DisplayName("fail case : 채널 멤버가 아니면 알림 설정을 바꿀 수 없다 (3003)")
+    void 채널_멤버가_아니면_알림_설정을_바꿀_수_없다() {
+        // arrange
+        when(channelUserRepository.updateNotificationMuted(100L, LOGIN_ID, true)).thenReturn(0);
+
+        // act
+        ApiException exception = catchThrowableOfType(() -> channelService.setNotificationMuted(100L, true), ApiException.class);
+
+        // assert
+        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_CHANNEL_MEMBER);
+    }
+
+    @Test
+    @DisplayName("success case : 채널 목록에 내 알림 음소거 여부를 주고 참여 안 한 채널은 false 다")
+    void 채널_목록에_내_알림_음소거_여부를_주고_참여_안_한_채널은_false_다() {
+        // arrange
+        givenTeamMember(LOGIN_ID);
+        ChannelUser mutedGeneral = ChannelUser.builder().channelId(100L).userId(LOGIN_ID).notificationMuted(true).deleteYn(false).build();
+        when(channelUserRepository.findAllByUserIdAndDeleteYnIsFalse(LOGIN_ID)).thenReturn(List.of(mutedGeneral, membership(102L, null)));
+        when(channelRepository.findAllByTeamIdAndChannelTypeAndDeleteYnIsFalseOrderByIdAsc(TEAM_ID, ChannelType.PUBLIC))
+            .thenReturn(List.of(publicChannel(100L, "general"), publicChannel(101L, "random"), publicChannel(102L, "lunch")));
+
+        // act
+        ResponseData<Map<String, List<ChannelDto>>> response = channelService.getChannels(TEAM_ID);
+
+        // assert : general 은 음소거, random 은 참여 안 함, lunch 는 저장 전 기본값(null) = false
+        assertThat(response.getData().get("list")).extracting(ChannelDto::getMuted).containsExactly(true, false, false);
+    }
+
+    @Test
+    @DisplayName("success case : DM 목록에 내 알림 음소거 여부를 준다")
+    void DM_목록에_내_알림_음소거_여부를_준다() {
+        // arrange
+        givenTeamMember(LOGIN_ID);
+        ChannelUser mutedDm = ChannelUser.builder().channelId(200L).userId(LOGIN_ID).notificationMuted(true).deleteYn(false).build();
+        when(channelUserRepository.findAllByUserIdAndDeleteYnIsFalse(LOGIN_ID)).thenReturn(List.of(mutedDm, membership(201L, null)));
+        when(channelRepository.findAllByIdInAndTeamIdAndChannelTypeAndDeleteYnIsFalse(Set.of(200L, 201L), TEAM_ID, ChannelType.DM))
+            .thenReturn(List.of(new Channel(200L, TEAM_ID, "dm:3:7", ChannelType.DM, false), new Channel(201L, TEAM_ID, "dm:3:8", ChannelType.DM, false)));
+        when(userRepository.findAllById(any())).thenReturn(List.of(new User(7L, "bob", "bob", "hash", false), new User(8L, "carol", "carol", "hash", false)));
+
+        // act
+        ResponseData<Map<String, List<DmDto>>> response = channelService.getDms(TEAM_ID);
+
+        // assert
+        assertThat(response.getData().get("list")).extracting(DmDto::getChannelId, DmDto::getMuted)
+            .containsExactly(org.assertj.core.groups.Tuple.tuple(200L, true), org.assertj.core.groups.Tuple.tuple(201L, false));
+    }
+
     private ChannelUser membership(Long channelId, String lastReadMessageId) {
         return ChannelUser.builder().channelId(channelId).userId(LOGIN_ID).lastReadMessageId(lastReadMessageId).deleteYn(false).build();
     }

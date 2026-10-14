@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  createChannel, getChannels, getDms, getMyTeams, getTeamMembers, joinChannel, openDm,
+  createChannel, getChannels, getDms, getMyTeams, getTeamMembers, joinChannel, openDm, setChannelMuted,
 } from '../api.js'
+import { useAwayState } from '../hooks/useAwayState.js'
 import { useChatSocket } from '../hooks/useChatSocket.js'
+import { useMessageNotifications } from '../hooks/useMessageNotifications.js'
+import { usePresence } from '../hooks/usePresence.js'
+import { channelFromUrl, documentTitle } from '../notify.js'
+import { listenServiceWorker } from '../push.js'
 import ChannelView from './ChannelView.jsx'
 import DmPicker from './DmPicker.jsx'
 import ProfilePanel from './ProfilePanel.jsx'
@@ -11,7 +16,6 @@ import TeamModal from './TeamModal.jsx'
 import WorkspaceRail from './WorkspaceRail.jsx'
 
 export const TEAM_STORAGE_KEY = 'chat.teamId'
-export const PRESENCE_POLL_MS = 30_000
 // 서버도 안 읽은 수를 100 에서 자른다
 const UNREAD_CAP = 100
 
@@ -33,12 +37,16 @@ function storeTeamId(teamId) {
   }
 }
 
+const findIn = (channelList, dmList, channelId) =>
+  channelList.find((c) => c.channelId === channelId && c.joined) ?? dmList.find((d) => d.channelId === channelId) ?? null
+
 const setUnread = (items, channelId, update) =>
   items.map((item) => (item.channelId === channelId ? { ...item, unreadCount: update(item.unreadCount) } : item))
 
-// 로그인 뒤 화면 전체. 팀 / 채널 목록 / 멤버(접속 여부) / 웹소켓을 들고 있고 열린 채널은 ChannelView 가 그린다
+// 로그인 뒤 화면 전체. 팀 / 채널 목록 / 멤버 / 접속 상태 / 웹소켓 / 알림을 들고 있고 열린 채널은 ChannelView 가 그린다
 export default function Workspace({ me, onLogout }) {
   const socket = useChatSocket()
+  const awayState = useAwayState(socket)
   const [teams, setTeams] = useState([])
   const [teamsLoaded, setTeamsLoaded] = useState(false)
   const [teamId, setTeamId] = useState(null)
@@ -59,6 +67,13 @@ export default function Workspace({ me, onLogout }) {
   // 목록에 없는 채널 메시지가 오면 DM 목록을 한 번 다시 부른다 (상대가 새로 DM 을 연 경우).
   // 다시 불러도 없으면 다른 팀 채널이므로 또 부르지 않는다
   const checkedUnknownRef = useRef(new Set())
+  // 열어 달라고 한 채널 (주소 ?channel= / 알림 클릭). 지금 팀에 없으면 다른 팀에서 찾아 그 팀으로 옮긴 뒤 연다
+  // 처음 주소(웹 푸시 알림으로 열린 창 /?channel=12)도 여기서 시작한다
+  const [channelInUrl] = useState(() => channelFromUrl(window.location.href))
+  const pendingChannelRef = useRef(channelInUrl)
+  const teamsRef = useRef(teams)
+  teamsRef.current = teams
+  const presence = usePresence(teamId, socket.connectionId)
 
   const myName = me.userName ?? me.account
 
@@ -85,7 +100,26 @@ export default function Workspace({ me, onLogout }) {
     setSidebarOpen(false)
   }, [])
 
-  // 팀을 바꾸면 채널 / DM / 멤버를 새로 부르고 첫 번째 참여 채널을 연다. 멤버(접속 여부)는 30초마다 다시
+  // 주소창의 ?channel= 은 한 번 읽었으면 지운다 (새로고침해도 다시 그 채널로 끌려가지 않게)
+  useEffect(() => {
+    if (channelInUrl !== null) window.history.replaceState(null, '', window.location.pathname)
+  }, [channelInUrl])
+
+  // 다른 팀들에서 그 채널을 찾아 그 팀으로 옮긴다 (옮긴 뒤 아래 팀 effect 가 연다). 어디에도 없으면 포기
+  const searchOtherTeams = useCallback(async (channelId, currentTeamId) => {
+    for (const other of teamsRef.current) {
+      if (other.teamId === currentTeamId) continue
+      const [channelList, dmList] = await Promise.all([getChannels(other.teamId), getDms(other.teamId)])
+      if (findIn(channelList, dmList, channelId)) {
+        pendingChannelRef.current = channelId
+        setTeamId(other.teamId)
+        return
+      }
+    }
+    pendingChannelRef.current = null
+  }, [])
+
+  // 팀을 바꾸면 채널 / DM / 멤버(이름)를 새로 부르고, 열어 달라고 한 채널이 있으면 그것을, 아니면 첫 번째 참여 채널을 연다
   useEffect(() => {
     if (!teamId) return
     storeTeamId(teamId)
@@ -101,18 +135,19 @@ export default function Workspace({ me, onLogout }) {
       if (cancelled) return
       setChannels(channelList)
       setDms(dmList)
-      const first = channelList.find((c) => c.joined) ?? dmList[0]
+      const requested = pendingChannelRef.current
+      const target = requested !== null ? findIn(channelList, dmList, requested) : null
+      const first = target ?? channelList.find((c) => c.joined) ?? dmList[0]
       if (first) openChannel(first.channelId, first.unreadCount)
+      if (target) pendingChannelRef.current = null
+      else if (requested !== null) searchOtherTeams(requested, teamId)
     })
 
-    const loadMembers = () => getTeamMembers(teamId).then((list) => !cancelled && setMembers(list))
-    loadMembers()
-    const timer = setInterval(loadMembers, PRESENCE_POLL_MS)
+    getTeamMembers(teamId).then((list) => !cancelled && setMembers(list))
     return () => {
       cancelled = true
-      clearInterval(timer)
     }
-  }, [teamId, openChannel])
+  }, [teamId, openChannel, searchOtherTeams])
 
   // 열려 있지 않은 채널에 남이 보낸 메시지가 오면 그 채널 배지를 올린다
   useEffect(
@@ -161,14 +196,67 @@ export default function Workspace({ me, onLogout }) {
     [memberById, dms, me.userId, myName],
   )
 
+  // online | away | offline. 나는 서버에 묻지 않고 지금 연결 / 자리 비움 상태로
   const presenceOf = useCallback(
-    (userId) => (userId === me.userId ? socket.status === 'connected' : memberById.get(userId)?.online === true),
-    [memberById, me.userId, socket.status],
+    (userId) => {
+      if (userId !== me.userId) return presence.get(userId) ?? 'offline'
+      if (socket.status !== 'connected') return 'offline'
+      return awayState === 'away' ? 'away' : 'online'
+    },
+    [presence, me.userId, socket.status, awayState],
   )
 
   const select = (channelId) => {
-    const item = [...channels, ...dms].find((c) => c.channelId === channelId)
+    const item = [...listsRef.current.channels, ...listsRef.current.dms].find((c) => c.channelId === channelId)
     openChannel(channelId, item?.unreadCount ?? 0)
+  }
+
+  // 알림 클릭 / 서비스 워커 메시지로 채널 열기 : 지금 팀에 있으면 바로, 없으면 다른 팀에서 찾는다
+  const openAnywhere = (channelId) => {
+    const { channels: channelList, dms: dmList } = listsRef.current
+    if (findIn(channelList, dmList, channelId)) select(channelId)
+    else searchOtherTeams(channelId, teamId)
+  }
+  const openAnywhereRef = useRef(openAnywhere)
+  openAnywhereRef.current = openAnywhere
+
+  useEffect(
+    () =>
+      listenServiceWorker((url) => {
+        const channelId = channelFromUrl(url)
+        if (channelId !== null) openAnywhereRef.current(channelId)
+      }),
+    [],
+  )
+
+  const notifications = useMessageNotifications({
+    subscribe: socket.subscribe,
+    myUserId: me.userId,
+    findChannel: (channelId) => {
+      const { channels: channelList, dms: dmList } = listsRef.current
+      const channel = channelList.find((c) => c.channelId === channelId && c.joined)
+      if (channel) return { channelId, kind: 'channel', name: channel.channelName, muted: channel.muted }
+      const dm = dmList.find((d) => d.channelId === channelId)
+      return dm ? { channelId, kind: 'dm', name: dm.userName, muted: dm.muted } : null
+    },
+    openedId: () => listsRef.current.openedId,
+    nameOf,
+    onOpen: (channelId) => openAnywhereRef.current(channelId),
+  })
+
+  // 탭 제목 : 안 읽은 메시지 합계 "(3) 팀이름" (알림을 끈 채널도 센다)
+  const team = teams.find((t) => t.teamId === teamId)
+  const totalUnread = channels.reduce((sum, c) => sum + (c.joined ? c.unreadCount : 0), 0) + dms.reduce((sum, d) => sum + d.unreadCount, 0)
+  useEffect(() => {
+    document.title = documentTitle(team?.teamName, totalUnread)
+  }, [team?.teamName, totalUnread])
+
+  // 채널 알림 끄기 / 켜기 : 서버에 저장되면 목록에 반영 (배지는 그대로 센다)
+  const toggleMute = async (channelId, muted) => {
+    await setChannelMuted(channelId, muted)
+    const apply = (items) => items.map((item) => (item.channelId === channelId ? { ...item, muted } : item))
+    setChannels(apply)
+    setDms(apply)
   }
 
   const handleCreateChannel = async (name) => {
@@ -222,24 +310,30 @@ export default function Workspace({ me, onLogout }) {
     loadTeams(newTeamId)
   }
 
-  const team = teams.find((t) => t.teamId === teamId)
   const openedChannel = opened && channels.find((c) => c.channelId === opened.channelId && c.joined)
   const openedDm = opened && dms.find((d) => d.channelId === opened.channelId)
   const view = openedChannel
-    ? { channelId: openedChannel.channelId, kind: 'channel', name: openedChannel.channelName }
+    ? { channelId: openedChannel.channelId, kind: 'channel', name: openedChannel.channelName, muted: openedChannel.muted }
     : openedDm
-      ? { channelId: openedDm.channelId, kind: 'dm', name: openedDm.userName, userId: openedDm.userId }
+      ? { channelId: openedDm.channelId, kind: 'dm', name: openedDm.userName, userId: openedDm.userId, muted: openedDm.muted }
       : null
 
   const profile = profileUserId !== null && {
     userId: profileUserId,
     name: nameOf(profileUserId),
     account: profileUserId === me.userId ? me.account : undefined,
-    online: presenceOf(profileUserId),
+    status: presenceOf(profileUserId),
   }
 
   return (
     <div className="app-shell">
+      {notifications.showBar && (
+        <div className="notify-bar" role="region" aria-label="알림 켜기 안내">
+          <span>알림을 켜면 다른 채널의 새 메시지를 알려 드려요</span>
+          <button type="button" className="notify-bar-enable" onClick={notifications.enable}>알림 켜기</button>
+          <button type="button" className="notify-bar-close" onClick={notifications.dismiss} aria-label="알림 안내 닫기">✕</button>
+        </div>
+      )}
       {socket.status === 'reconnecting' && (
         <div className="connection-banner" role="status">연결이 끊겼어요. 다시 연결하는 중…</div>
       )}
@@ -278,6 +372,7 @@ export default function Workspace({ me, onLogout }) {
               presenceOf={presenceOf}
               onOpenProfile={openProfile}
               onToggleSidebar={() => setSidebarOpen(true)}
+              onToggleMute={(muted) => toggleMute(view.channelId, muted)}
             />
           ) : (
             <div className="empty-main">
@@ -310,7 +405,7 @@ export default function Workspace({ me, onLogout }) {
         <TeamModal myTeamIds={teams.map((t) => t.teamId)} onDone={handleTeamDone} onClose={closeModal} />
       )}
       {modal === 'dm' && (
-        <DmPicker members={members} myUserId={me.userId} error={dmError} onPick={pickDm} onClose={closeModal} />
+        <DmPicker members={members} myUserId={me.userId} presenceOf={presenceOf} error={dmError} onPick={pickDm} onClose={closeModal} />
       )}
     </div>
   )

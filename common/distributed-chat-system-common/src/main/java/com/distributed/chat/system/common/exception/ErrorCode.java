@@ -37,7 +37,10 @@ public enum ErrorCode {
     /* 첨부파일 */
     FILE_TOO_LARGE(4003, PAYLOAD_TOO_LARGE, "파일이 너무 큽니다."),
     EMPTY_FILE(4004, BAD_REQUEST, "빈 파일입니다."),
-    NOT_EXIST_FILE(4005, NOT_FOUND, "없는 파일입니다.");
+    NOT_EXIST_FILE(4005, NOT_FOUND, "없는 파일입니다."),
+
+    /* 알림 */
+    INVALID_PUSH_SUBSCRIPTION(5001, BAD_REQUEST, "잘못된 푸시 구독입니다.");
 
     private final int customCode;
     private final HttpStatus httpStatus;

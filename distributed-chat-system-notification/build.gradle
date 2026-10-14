@@ -1,3 +1,34 @@
 dependencies {
     implementation project(':common:distributed-chat-system-common')
+    implementation project(':infra:distributed-chat-system-mysql')
+    implementation project(':infra:distributed-chat-system-redis')
+
+    // kafka : chat-notification 소비
+    implementation 'org.springframework.kafka:spring-kafka'
+
+    // security + 공유 세션 (client-api 가 로그인시킨 세션을 그대로 읽는다)
+    implementation('org.springframework.boot:spring-boot-starter-security')
+    testImplementation('org.springframework.security:spring-security-test')
+
+    // mysql : 구독 / 음소거 / 채널 / 유저 / VAPID 키
+    compileOnly('org.springframework.boot:spring-boot-starter-data-jpa')
+    testImplementation('org.springframework.boot:spring-boot-starter-data-jpa')
+
+    // redis : 공유 세션 + 알림 묶기 (notify:throttle)
+    implementation('org.springframework.boot:spring-boot-starter-data-redis')
+    implementation('org.springframework.session:spring-session-data-redis')
+
+    // eureka-client : NOTIFICATION 으로 등록 (api-gateway 가 lb://NOTIFICATION 으로 찾는다)
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+
+    // 웹 푸시 (VAPID 서명 + aes128gcm 암호화). 타원곡선 연산은 BouncyCastle
+    implementation 'nl.martijndwars:web-push:5.1.1'
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
+
+    // 메트릭 (/actuator/prometheus)
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    // 재시도 토픽 / DLT 통합 테스트 (Kafka 는 진짜 브로커를 테스트 안에 띄운다)
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
 }

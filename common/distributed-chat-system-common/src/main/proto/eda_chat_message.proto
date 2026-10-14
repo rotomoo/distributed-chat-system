@@ -56,3 +56,15 @@ message ChatReactionDelivery {
   repeated Reaction reactions = 3;
   repeated int64 receive_user_ids = 4;
 }
+
+// 컨슈머 -> 알림 서버 : 오프라인 멤버(접속 위치 없음 / 죽은 서버)에게 웹 푸시 (토픽 chat-notification, key = channel_id)
+// 보낸 사람은 빠진다. 받는 사람이 많으면 500명씩 나눠 여러 건으로 보낸다. 리액션은 알림을 만들지 않는다
+message ChatNotification {
+  string message_id = 1;
+  int64 channel_id = 2;
+  int64 sender_id = 3;
+  string preview = 4; // 본문 앞 100자 (코드 포인트 기준, 이모지가 잘리지 않게)
+  int32 attachment_count = 5; // 확인된 첨부 수 (본문 없이 첨부만이면 알림 본문이 "파일 N개")
+  int64 publish_dt = 6; // epoch millis (채팅 서버가 받은 시각)
+  repeated int64 receiver_user_ids = 7;
+}

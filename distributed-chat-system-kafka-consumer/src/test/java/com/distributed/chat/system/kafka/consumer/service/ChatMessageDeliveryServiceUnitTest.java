@@ -96,7 +96,7 @@ class ChatMessageDeliveryServiceUnitTest {
         givenLocations(List.of("5", "9", "17"), "ws://" + SERVER_1, "ws://" + SERVER_2, "ws://" + SERVER_1);
 
         // act
-        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), List.of(5L, 9L, 17L));
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), chatMessageDeliveryService.locate(List.of(5L, 9L, 17L)));
 
         // assert
         assertDelivered(CHAT_SERVER_1, List.of(List.of(5L, 17L)));
@@ -111,12 +111,41 @@ class ChatMessageDeliveryServiceUnitTest {
         givenLocations(List.of("5", "9", "17"), "ws://" + SERVER_1, null, "ws://10.0.0.9:9999");
 
         // act
-        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), List.of(5L, 9L, 17L));
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), chatMessageDeliveryService.locate(List.of(5L, 9L, 17L)));
 
         // assert
         assertDelivered(CHAT_SERVER_1, List.of(List.of(5L)));
         verify(chatServerClient, never()).deliver(eq(CHAT_SERVER_2), any());
         verify(chatServerClient, never()).deliver(eq(URI.create("http://10.0.0.9:9999")), any());
+    }
+
+    @Test
+    @DisplayName("success case : 접속 위치가 없거나 죽은 서버를 가리키는 멤버는 오프라인 목록으로 돌려준다 (알림 대상)")
+    void 접속_위치가_없거나_죽은_서버를_가리키는_멤버는_오프라인_목록으로_돌려준다() {
+        // arrange
+        givenLocations(List.of("5", "9", "17", "21"), "ws://" + SERVER_1, null, "ws://10.0.0.9:9999", "ws://" + SERVER_2);
+
+        // act
+        ChatReceivers receivers = chatMessageDeliveryService.locate(List.of(5L, 9L, 17L, 21L));
+
+        // assert
+        assertThat(receivers.offline()).containsExactly(9L, 17L);
+        assertThat(receivers.byChatServer()).containsOnlyKeys(SERVER_1, SERVER_2);
+        assertThat(receivers.byChatServer().get(SERVER_1)).containsExactly(5L);
+        assertThat(receivers.byChatServer().get(SERVER_2)).containsExactly(21L);
+        verify(chatServerClient, never()).deliver(any(), any());
+    }
+
+    @Test
+    @DisplayName("success case : 멤버가 없으면 Redis 를 보지 않고 빈 결과를 돌려준다")
+    void 멤버가_없으면_Redis_를_보지_않고_빈_결과를_돌려준다() {
+        // act
+        ChatReceivers receivers = chatMessageDeliveryService.locate(List.of());
+
+        // assert
+        assertThat(receivers.offline()).isEmpty();
+        assertThat(receivers.byChatServer()).isEmpty();
+        verify(valueOperations, never()).multiGet(any());
     }
 
     @Test
@@ -127,7 +156,7 @@ class ChatMessageDeliveryServiceUnitTest {
         givenLocationsOnServer1(members);
 
         // act
-        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), members);
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), chatMessageDeliveryService.locate(members));
 
         // assert
         assertThat(deliveredChunkSizes(CHAT_SERVER_1)).containsExactly(500);
@@ -141,7 +170,7 @@ class ChatMessageDeliveryServiceUnitTest {
         givenLocationsOnServer1(members);
 
         // act
-        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), members);
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), chatMessageDeliveryService.locate(members));
 
         // assert
         assertThat(deliveredChunkSizes(CHAT_SERVER_1)).containsExactly(500, 1);
@@ -155,7 +184,7 @@ class ChatMessageDeliveryServiceUnitTest {
         givenLocationsOnServer1(members);
 
         // act
-        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), members);
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), chatMessageDeliveryService.locate(members));
 
         // assert
         assertThat(deliveredChunkSizes(CHAT_SERVER_1)).containsExactly(500, 500, 200);
@@ -172,7 +201,7 @@ class ChatMessageDeliveryServiceUnitTest {
             Collections.nCopies(500, "ws://" + SERVER_1), Collections.nCopies(500, "ws://" + SERVER_2), Collections.nCopies(200, null)));
 
         // act
-        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), members);
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), chatMessageDeliveryService.locate(members));
 
         // assert : 파이프라인 안에서 MGET 을 500 / 500 / 200 키로 부른다
         RedisConnection connection = mock(RedisConnection.class);
@@ -208,7 +237,7 @@ class ChatMessageDeliveryServiceUnitTest {
         }).when(chatServerClient).deliver(eq(CHAT_SERVER_2), any());
 
         // act
-        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), List.of(5L, 9L));
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), chatMessageDeliveryService.locate(List.of(5L, 9L)));
 
         // assert
         assertThat(server1Finished).isTrue();
@@ -223,7 +252,7 @@ class ChatMessageDeliveryServiceUnitTest {
 
         // act
         DeliveryFailedException exception = catchThrowableOfType(
-            () -> chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), List.of(5L, 9L)), DeliveryFailedException.class);
+            () -> chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), chatMessageDeliveryService.locate(List.of(5L, 9L))), DeliveryFailedException.class);
 
         // assert
         assertDelivered(CHAT_SERVER_2, List.of(List.of(9L)));
@@ -237,7 +266,7 @@ class ChatMessageDeliveryServiceUnitTest {
         givenLocations(List.of("5", "9"), null, null);
 
         // act
-        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), List.of(5L, 9L));
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), chatMessageDeliveryService.locate(List.of(5L, 9L)));
 
         // assert
         verify(chatServerClient, never()).deliver(any(), any());
@@ -251,7 +280,7 @@ class ChatMessageDeliveryServiceUnitTest {
 
         // act
         chatMessageDeliveryService.deliver("message-1", chatMessage,
-            List.of(new Attachment("6acc66675f99715e286f0f6e", "사진.png", "image/png", 10L)), List.of(5L));
+            List.of(new Attachment("6acc66675f99715e286f0f6e", "사진.png", "image/png", 10L)), chatMessageDeliveryService.locate(List.of(5L)));
 
         // assert
         ArgumentCaptor<ChatMessageDelivery> captor = ArgumentCaptor.forClass(ChatMessageDelivery.class);

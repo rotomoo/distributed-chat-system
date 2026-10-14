@@ -3,12 +3,15 @@ package com.distributed.chat.system.kafka.consumer.consumer;
 import com.distributed.chat.system.kafka.consumer.base.kafka.ChatTopics;
 import com.distributed.chat.system.kafka.consumer.service.ChatAttachmentResolver;
 import com.distributed.chat.system.kafka.consumer.service.ChatMessageDeliveryService;
+import com.distributed.chat.system.kafka.consumer.service.ChatNotificationPublisher;
+import com.distributed.chat.system.kafka.consumer.service.ChatReceivers;
 import com.distributed.chat.system.mongodb.collection.ChatMessage.Attachment;
 import com.distributed.chat.system.mongodb.collection.ChatMessage.Reaction;
 import com.distributed.chat.system.mongodb.repository.ChatMessageRepository;
 import com.distributed.chat.system.mysql.repository.ChannelUserRepository;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +25,8 @@ import protobuf.EdaChatMessage.ChatReaction;
 /**
  * 보낸 사람이 채널 멤버인지는 여기서 한 번만 확인한다 (원본 MySQL channel_user, 멤버 목록은 전달에도 그대로 쓴다).
  * 저장 / 전달 실패는 예외로 던진다 → 재시도 토픽으로 넘어가 나중에 다시 처리된다 (KafkaRetryTopicConfig).
- * 같은 레코드를 여러 번 처리해도 결과가 같다 : 메시지는 eventId 로 한 번만 저장, 리액션은 $addToSet / $pull
+ * 같은 레코드를 여러 번 처리해도 결과가 같다 : 메시지는 eventId 로 한 번만 저장, 리액션은 $addToSet / $pull.
+ * 오프라인 멤버 알림(chat-notification)은 메시지가 처음 저장될 때 한 번만 발행한다 (재시도 / 중복 발행 / DLT 재발행으로 알림이 다시 가지 않게)
  */
 @Component
 @Slf4j
@@ -33,6 +37,7 @@ public class EventConsumer {
     private final ChatMessageDeliveryService chatMessageDeliveryService;
     private final ChatAttachmentResolver chatAttachmentResolver;
     private final ChannelUserRepository channelUserRepository;
+    private final ChatNotificationPublisher chatNotificationPublisher;
 
     @KafkaListener(topics = ChatTopics.CHAT_SEND_MESSAGE, groupId = "chat-group-1")
     public void consumeChatSendMessage(byte[] payload) {
@@ -66,23 +71,36 @@ public class EventConsumer {
         }
 
         // 2. 이력 저장 (eventId 로 한 번만. 재시도 / 중복 발행이면 처음 저장된 문서를 그대로 받는다)
+        //    MongoDB Date 는 밀리초까지라 미리 잘라 두면 돌아온 createDt 가 같을 때 = 이번에 처음 저장한 것
+        Instant createDt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
         com.distributed.chat.system.mongodb.collection.ChatMessage saved = chatMessageRepository.saveOnce(
             com.distributed.chat.system.mongodb.collection.ChatMessage.builder()
                 .eventId(eventId)
                 .channelId(chatMessage.getChannelId())
                 .content(chatMessage.getMessage())
                 .eventPublishDt(Instant.ofEpochMilli(chatMessage.getPublishDt()))
-                .createDt(Instant.now())
+                .createDt(createDt)
                 .createUserId(chatMessage.getSendUserId())
                 .attachments(attachments.isEmpty() ? null : attachments)
                 .build());
 
-        // 3. 멤버가 접속한 채팅 서버로 전달 (실패하면 예외 → 재시도 토픽)
-        chatMessageDeliveryService.deliver(saved.getId().toHexString(), chatMessage, attachments, memberIds);
+        String messageId = saved.getId().toHexString();
+
+        // 3. 접속 위치 (Redis MGET) → 접속한 멤버 / 오프라인 멤버
+        ChatReceivers receivers = chatMessageDeliveryService.locate(memberIds);
+
+        // 4. 오프라인 멤버 알림 (처음 저장했을 때만). 전달보다 먼저 : 전달이 실패해 재시도로 넘어가도 알림은 이미 나갔다.
+        //    발행 실패는 레코드를 실패시키지 않는다 (ChatNotificationPublisher)
+        if (createDt.equals(saved.getCreateDt())) {
+            chatNotificationPublisher.publish(messageId, chatMessage, attachments.size(), receivers.offline());
+        }
+
+        // 5. 접속한 멤버의 채팅 서버로 전달 (실패하면 예외 → 재시도 토픽)
+        chatMessageDeliveryService.deliver(messageId, chatMessage, attachments, receivers);
     }
 
     /**
-     * 이모지 리액션 : 메시지 문서의 reactions 를 원자적으로 바꾸고, 바뀐 뒤의 reactions 전체를 채널 접속자에게 보낸다.
+     * 이모지 리액션 : 메시지 문서의 reactions 를 원자적으로 바꾸고, 바뀐 뒤의 reactions 전체를 채널 접속자에게 보낸다 (알림 없음).
      * $addToSet / $pull 이라 같은 이벤트를 다시 처리해도 결과가 같아서 메시지처럼 eventId 가 필요 없다
      */
     @KafkaListener(topics = ChatTopics.CHAT_REACTION, groupId = "chat-group-1")

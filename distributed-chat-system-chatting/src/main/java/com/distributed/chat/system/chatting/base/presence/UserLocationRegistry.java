@@ -22,7 +22,13 @@ import org.springframework.stereotype.Component;
  *   <li>죽은 서버(Eureka 에 없음) : 그 값일 때만 이 서버로 바꾼다 (compare-and-set). 그 사이 다른 서버가 먼저 바꿨으면 거절</li>
  *   <li>이 서버의 마지막 기기가 끊김 : 값이 아직 이 서버일 때만 지운다 (compare-and-delete). 다른 서버 값은 건드리지 않는다</li>
  * </ul>
- * 값 비교는 RedisTemplate 의 값 직렬화(JSON 문자열) 그대로 Lua 에서 한다
+ * Redis {@code presence:{userId}} = 접속 상태 ("online" | "away", TTL 60초). 접속 위치를 가진 서버만 쓴다.
+ * <ul>
+ *   <li>쓰기 / TTL 갱신 : 위치 키가 이 서버일 때만 SET EX (확인과 쓰기를 Lua 하나로). 다른 서버로 넘어간 뒤 늦게 도착한 쓰기가 덮어쓰지 않는다</li>
+ *   <li>마지막 기기가 끊김 : 위치 키가 이 서버일 때만 위치 키와 상태 키를 함께 지운다. 둘 중 하나만 남는 순간이 없다</li>
+ * </ul>
+ * 값 비교는 RedisTemplate 의 값 직렬화(JSON 문자열) 그대로 Lua 에서 한다.
+ * 두 키를 한 스크립트에서 다루므로 Redis Cluster 로 바꾸면 해시 태그로 같은 슬롯에 둬야 한다 (지금은 Sentinel)
  */
 @Slf4j
 @Component
@@ -32,8 +38,19 @@ public class UserLocationRegistry {
     static final RedisScript<Long> COMPARE_AND_SET = new DefaultRedisScript<>(
         "if redis.call('get', KEYS[1]) == ARGV[1] then redis.call('set', KEYS[1], ARGV[2]) return 1 end return 0", Long.class);
 
+    /**
+     * KEYS = [위치 키, 상태 키], ARGV = [이 서버 값]. 위치 키가 이 서버일 때만 두 키를 함께 지운다
+     */
     static final RedisScript<Long> COMPARE_AND_DELETE = new DefaultRedisScript<>(
-        "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0", Long.class);
+        "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1], KEYS[2]) end return 0", Long.class);
+
+    /**
+     * KEYS = [위치 키, 상태 키], ARGV = [이 서버 값, 상태]. 위치 키가 이 서버일 때만 상태를 TTL 과 함께 쓴다
+     * (TTL 은 값 직렬화를 거치지 않도록 스크립트에 숫자로 넣는다)
+     */
+    static final RedisScript<Long> COMPARE_AND_SET_PRESENCE = new DefaultRedisScript<>(
+        "if redis.call('get', KEYS[1]) == ARGV[1] then redis.call('set', KEYS[2], ARGV[2], 'EX', "
+            + ChatPresenceKeys.PRESENCE_TTL.toSeconds() + ") return 1 end return 0", Long.class);
 
     private final RedisTemplate redisTemplate;
     private final DiscoveryClient discoveryClient;
@@ -70,10 +87,26 @@ public class UserLocationRegistry {
     }
 
     /**
-     * 이 서버의 마지막 기기가 끊겼을 때. 값이 아직 이 서버일 때만 지운다
+     * 접속 상태를 쓰고 TTL 을 60초로 다시 잡는다. 위치 키가 이 서버일 때만
+     *
+     * @param presence {@link ChatPresenceKeys#ONLINE} | {@link ChatPresenceKeys#AWAY}
+     * @return 썼으면 true, 위치 키가 이 서버가 아니라서(다른 서버로 넘어감 / 없음) 안 썼으면 false
+     */
+    @SuppressWarnings("unchecked")
+    public boolean writePresence(String userId, String chatServer, String presence) {
+        Long written = (Long) redisTemplate.execute(COMPARE_AND_SET_PRESENCE,
+            List.of(ChatPresenceKeys.userKey(userId), ChatPresenceKeys.presenceKey(userId)),
+            ChatPresenceKeys.userKeyValue(chatServer), presence);
+        return Long.valueOf(1).equals(written);
+    }
+
+    /**
+     * 이 서버의 마지막 기기가 끊겼을 때. 위치 키가 아직 이 서버일 때만 위치 키와 상태 키를 함께 지운다
      */
     @SuppressWarnings("unchecked")
     public void release(String userId, String chatServer) {
-        redisTemplate.execute(COMPARE_AND_DELETE, List.of(ChatPresenceKeys.userKey(userId)), ChatPresenceKeys.userKeyValue(chatServer));
+        redisTemplate.execute(COMPARE_AND_DELETE,
+            List.of(ChatPresenceKeys.userKey(userId), ChatPresenceKeys.presenceKey(userId)),
+            ChatPresenceKeys.userKeyValue(chatServer));
     }
 }

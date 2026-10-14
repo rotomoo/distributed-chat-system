@@ -82,11 +82,12 @@ export default function Sidebar({
                 <li key={channel.channelId}>
                   <button
                     type="button"
-                    className={`nav-item ${channel.channelId === selectedId ? 'active' : ''} ${channel.unreadCount > 0 ? 'unread' : ''}`}
+                    className={`nav-item ${channel.channelId === selectedId ? 'active' : ''} ${channel.unreadCount > 0 ? 'unread' : ''} ${channel.muted ? 'muted' : ''}`}
                     onClick={() => onSelect(channel.channelId)}
                   >
                     <span className="nav-icon">#</span>
                     <span className="nav-label">{channel.channelName}</span>
+                    {channel.muted && <span className="muted-icon" aria-label="알림 꺼짐">🔕</span>}
                     {channel.unreadCount > 0 && <span className="badge">{badgeText(channel.unreadCount)}</span>}
                   </button>
                 </li>
@@ -122,11 +123,12 @@ export default function Sidebar({
                 <li key={dm.channelId}>
                   <button
                     type="button"
-                    className={`nav-item dm ${dm.channelId === selectedId ? 'active' : ''} ${dm.unreadCount > 0 ? 'unread' : ''}`}
+                    className={`nav-item dm ${dm.channelId === selectedId ? 'active' : ''} ${dm.unreadCount > 0 ? 'unread' : ''} ${dm.muted ? 'muted' : ''}`}
                     onClick={() => onSelect(dm.channelId)}
                   >
                     <Avatar userId={dm.userId} name={dm.userName} size={20} presence={presenceOf(dm.userId)} />
                     <span className="nav-label">{dm.userName}</span>
+                    {dm.muted && <span className="muted-icon" aria-label="알림 꺼짐">🔕</span>}
                     {dm.unreadCount > 0 && <span className="badge">{badgeText(dm.unreadCount)}</span>}
                   </button>
                 </li>
