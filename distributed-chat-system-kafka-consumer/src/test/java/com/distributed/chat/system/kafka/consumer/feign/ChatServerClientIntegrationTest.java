@@ -3,7 +3,11 @@ package com.distributed.chat.system.kafka.consumer.feign;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.distributed.chat.system.common.config.ProtobufConfig;
+import com.distributed.chat.system.common.event.ChatMessageDelivery;
+import com.distributed.chat.system.common.event.ChatMessageEvent;
+import com.distributed.chat.system.common.event.ChatReactionDelivery;
+import com.distributed.chat.system.common.event.ChatReactionDelivery.Reaction;
+import com.distributed.chat.system.common.event.EventJson;
 import com.sun.net.httpserver.HttpServer;
 import feign.FeignException;
 import feign.RetryableException;
@@ -11,6 +15,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
@@ -22,29 +27,24 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.autoconfigure.http.HttpMessageConvertersAutoConfiguration;
+import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.cloud.openfeign.FeignAutoConfiguration;
-import org.springframework.context.annotation.Import;
-import protobuf.EdaChatMessage.ChatMessage;
-import protobuf.EdaChatMessage.ChatMessageDelivery;
-import protobuf.EdaChatMessage.ChatReactionDelivery;
-import protobuf.EdaChatMessage.Reaction;
 
 /**
- * 실제 HTTP 서버(JDK HttpServer)를 채팅 서버 대신 띄워서, Feign 설정(대상 URI, protobuf 본문, 타임아웃, 재시도 없음)을 그대로 검증한다
+ * 실제 HTTP 서버(JDK HttpServer)를 채팅 서버 대신 띄워서, Feign 설정(대상 URI, JSON 본문, 타임아웃, 재시도 없음)을 그대로 검증한다
  */
 @DisplayName("[통합] ChatServerClient 테스트")
 @SpringBootTest(classes = ChatServerClientIntegrationTest.TestConfig.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
 class ChatServerClientIntegrationTest {
 
     @EnableFeignClients(clients = ChatServerClient.class)
-    @ImportAutoConfiguration({HttpMessageConvertersAutoConfiguration.class, FeignAutoConfiguration.class})
-    @Import(ProtobufConfig.class)
+    @ImportAutoConfiguration({JacksonAutoConfiguration.class, HttpMessageConvertersAutoConfiguration.class, FeignAutoConfiguration.class})
     static class TestConfig {
     }
 
-    private record ReceivedRequest(String path, String contentType, byte[] body) {
+    private record ReceivedRequest(String path, String contentType, String body) {
     }
 
     @Autowired
@@ -56,16 +56,10 @@ class ChatServerClientIntegrationTest {
     private volatile int responseStatus = 200;
     private volatile long responseDelayMs = 0;
 
-    private final ChatMessageDelivery delivery = ChatMessageDelivery.newBuilder()
-        .setMessageId("message-1")
-        .setChatMessage(ChatMessage.newBuilder()
-            .setSendUserId(5L)
-            .setChannelId(7L)
-            .setMessage("hello")
-            .setPublishDt(1_700_000_000_000L)
-            .build())
-        .addAllReceiveUserIds(List.of(5L, 17L))
-        .build();
+    private final ChatMessageDelivery delivery = new ChatMessageDelivery("message-1",
+        new ChatMessageEvent("event-1", 5L, 7L, "hello 😀", 1_700_000_000_000L, List.of()),
+        List.of(5L, 17L),
+        List.of(new ChatMessageDelivery.Attachment("6acc66675f99715e286f0f6e", "사진.png", "image/png", 10L)));
 
     @BeforeEach
     void setup() throws IOException {
@@ -77,7 +71,7 @@ class ChatServerClientIntegrationTest {
             receivedRequests.add(new ReceivedRequest(
                 exchange.getRequestURI().getPath(),
                 exchange.getRequestHeaders().getFirst("Content-Type"),
-                exchange.getRequestBody().readAllBytes()));
+                new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
             try {
                 Thread.sleep(responseDelayMs);
             } catch (InterruptedException e) {
@@ -96,8 +90,8 @@ class ChatServerClientIntegrationTest {
     }
 
     @Test
-    @DisplayName("success case : 넘긴 URI 의 채팅 서버로 /internal/chat/deliver 에 protobuf 본문을 보낸다")
-    void 넘긴_URI_의_채팅_서버로_protobuf_본문을_보낸다() throws Exception {
+    @DisplayName("success case : 넘긴 URI 의 채팅 서버로 /internal/chat/deliver 에 JSON 본문을 보낸다")
+    void 넘긴_URI_의_채팅_서버로_JSON_본문을_보낸다() {
         // given
         URI chatServerUri = chatServerUri();
 
@@ -108,19 +102,18 @@ class ChatServerClientIntegrationTest {
         assertThat(receivedRequests).hasSize(1);
         ReceivedRequest request = receivedRequests.get(0);
         assertThat(request.path()).isEqualTo("/internal/chat/deliver");
-        assertThat(request.contentType()).startsWith("application/x-protobuf");
-        assertThat(ChatMessageDelivery.parseFrom(request.body())).isEqualTo(delivery);
+        assertThat(request.contentType()).startsWith("application/json");
+        assertThat(EventJson.read(request.body(), ChatMessageDelivery.class)).isEqualTo(delivery);
+        assertThat(request.body()).contains("\"messageId\":\"message-1\"", "\"receiveUserIds\":[5,17]",
+            "\"chatMessage\":{\"eventId\":\"event-1\"", "\"attachments\":[{\"fileId\":\"6acc66675f99715e286f0f6e\"");
     }
 
     @Test
-    @DisplayName("success case : 리액션은 같은 채팅 서버의 /internal/chat/deliver-reaction 에 protobuf 본문을 보낸다")
-    void 리액션은_같은_채팅_서버의_deliver_reaction_에_protobuf_본문을_보낸다() throws Exception {
+    @DisplayName("success case : 리액션은 같은 채팅 서버의 /internal/chat/deliver-reaction 에 JSON 본문을 보낸다")
+    void 리액션은_같은_채팅_서버의_deliver_reaction_에_JSON_본문을_보낸다() {
         // given
-        ChatReactionDelivery reactionDelivery = ChatReactionDelivery.newBuilder()
-            .setMessageId("message-1").setChannelId(7L)
-            .addReactions(Reaction.newBuilder().setEmoji("👍").addAllUserIds(List.of(5L, 17L)).build())
-            .addAllReceiveUserIds(List.of(5L, 17L))
-            .build();
+        ChatReactionDelivery reactionDelivery = new ChatReactionDelivery("message-1", 7L,
+            List.of(new Reaction("👍", List.of(5L, 17L))), List.of(5L, 17L));
 
         // when
         chatServerClient.deliverReaction(chatServerUri(), reactionDelivery);
@@ -129,8 +122,10 @@ class ChatServerClientIntegrationTest {
         assertThat(receivedRequests).hasSize(1);
         ReceivedRequest request = receivedRequests.get(0);
         assertThat(request.path()).isEqualTo("/internal/chat/deliver-reaction");
-        assertThat(request.contentType()).startsWith("application/x-protobuf");
-        assertThat(ChatReactionDelivery.parseFrom(request.body())).isEqualTo(reactionDelivery);
+        assertThat(request.contentType()).startsWith("application/json");
+        assertThat(EventJson.read(request.body(), ChatReactionDelivery.class)).isEqualTo(reactionDelivery);
+        // 이모지는 인코더에 따라 그대로 또는 유니코드 이스케이프로 간다 (어느 쪽이든 같은 JSON 문자열)
+        assertThat(request.body()).contains("\"reactions\":[{\"emoji\":", "\"userIds\":[5,17]}]", "\"receiveUserIds\":[5,17]");
     }
 
     @Test
@@ -141,7 +136,7 @@ class ChatServerClientIntegrationTest {
         URI chatServerUri = chatServerUri();
 
         // when & then
-        assertThatThrownBy(() -> chatServerClient.deliverReaction(chatServerUri, ChatReactionDelivery.getDefaultInstance()))
+        assertThatThrownBy(() -> chatServerClient.deliverReaction(chatServerUri, new ChatReactionDelivery(null, 0L, null, null)))
             .isInstanceOf(RetryableException.class);
         assertThat(receivedRequests).hasSize(1);
     }

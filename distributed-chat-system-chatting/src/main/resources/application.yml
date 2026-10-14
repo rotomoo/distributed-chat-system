@@ -13,8 +13,11 @@ spring:
     ansi:
       enabled: always
 
-# 앱 수준 하트비트 (ChatHeartbeatScheduler) : ping 주기, 아무 프레임도 없으면 닫는 시간
 chat:
+  # 컨슈머가 메시지마다 부르는 내부 전달 API 는 본문(채팅 내용, 수신자 목록)을 로그용으로 복사 / 출력하지 않는다 (크기만 남는다)
+  logging:
+    skip-body-paths: /internal/**
+  # 앱 수준 하트비트 (ChatHeartbeatScheduler) : ping 주기, 아무 프레임도 없으면 닫는 시간
   heartbeat:
     ping-interval-ms: 25000
     timeout-ms: 60000

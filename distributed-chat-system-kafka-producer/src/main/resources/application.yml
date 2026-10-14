@@ -12,6 +12,11 @@ spring:
     ansi:
       enabled: always
 
+# 채팅 서버가 메시지마다 부르는 발행 API 는 본문(채팅 내용)을 로그용으로 복사 / 출력하지 않는다 (크기만 남는다)
+chat:
+  logging:
+    skip-body-paths: /v1/private/event/**
+
 # 메트릭 : /actuator/health, /actuator/prometheus (api-gateway 는 /v1/**, /websocket/** 만 라우팅하므로 밖으로 노출되지 않는다)
 management:
   endpoints:

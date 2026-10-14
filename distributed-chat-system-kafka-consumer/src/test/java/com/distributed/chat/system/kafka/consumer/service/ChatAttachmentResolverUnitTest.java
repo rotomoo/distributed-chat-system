@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.distributed.chat.system.common.event.ChatMessageEvent;
 import com.distributed.chat.system.mongodb.collection.ChatMessage.Attachment;
 import com.distributed.chat.system.mongodb.file.ChatFile;
 import com.distributed.chat.system.mongodb.file.ChatFileStore;
@@ -14,7 +15,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import protobuf.EdaChatMessage.ChatMessage;
 
 @DisplayName("[단위] ChatAttachmentResolver 테스트")
 @ExtendWith(MockitoExtension.class)
@@ -38,7 +38,7 @@ class ChatAttachmentResolverUnitTest {
     @DisplayName("success case : 이 채널에 보낸 사람이 올린 파일만 GridFS 의 이름/형식/크기로 보낸 순서대로 남긴다")
     void 이_채널에_보낸_사람이_올린_파일만_GridFS_의_이름_형식_크기로_보낸_순서대로_남긴다() {
         // arrange
-        ChatMessage chatMessage = message(MINE_2, OTHER_CHANNEL, MINE, OTHER_UPLOADER, MISSING, MINE);
+        ChatMessageEvent chatMessage = message(MINE_2, OTHER_CHANNEL, MINE, OTHER_UPLOADER, MISSING, MINE);
         when(chatFileStore.findAllById(List.of(MINE_2, OTHER_CHANNEL, MINE, OTHER_UPLOADER, MISSING))).thenReturn(List.of(
             new ChatFile(MINE, CHANNEL, SENDER, "image/png", "사진.png", 10L),
             new ChatFile(OTHER_CHANNEL, 8L, SENDER, "image/png", "다른채널.png", 11L),
@@ -65,8 +65,7 @@ class ChatAttachmentResolverUnitTest {
         verifyNoInteractions(chatFileStore);
     }
 
-    private ChatMessage message(String... fileIds) {
-        return ChatMessage.newBuilder().setSendUserId(SENDER).setChannelId(CHANNEL).setMessage("")
-            .addAllAttachmentFileIds(List.of(fileIds)).setPublishDt(1L).build();
+    private ChatMessageEvent message(String... fileIds) {
+        return new ChatMessageEvent("event-1", SENDER, CHANNEL, "", 1L, List.of(fileIds));
     }
 }

@@ -28,7 +28,7 @@ public class ChatMessage {
     public static final int MAX_REACTION_EMOJIS = 50;
 
     /**
-     * 메시지 ID (ObjectId, 생성 시각 순). 밖(API / 웹소켓 / protobuf)으로는 toHexString() 24자리 문자열로 나간다.
+     * 메시지 ID (ObjectId, 생성 시각 순). 밖(API / 웹소켓 / 서버간 이벤트)으로는 toHexString() 24자리 문자열로 나간다.
      * <p>
      * 채팅 서버가 아니라 저장할 때(컨슈머의 upsert 삽입 시 MongoDB 가) 만든다. 한 채널의 메시지는 Kafka 파티션 순서대로 저장되므로
      * _id 순서 = 채널 안 순서가 되어 커서(before / after / 읽음 위치)로 쓸 수 있다. 여러 채팅 서버가 발행할 때 만들면 서버마다

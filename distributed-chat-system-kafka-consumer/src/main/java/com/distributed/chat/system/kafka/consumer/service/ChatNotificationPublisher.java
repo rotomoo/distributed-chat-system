@@ -1,13 +1,14 @@
 package com.distributed.chat.system.kafka.consumer.service;
 
+import com.distributed.chat.system.common.event.ChatMessageEvent;
+import com.distributed.chat.system.common.event.ChatNotificationEvent;
+import com.distributed.chat.system.common.event.EventJson;
 import com.distributed.chat.system.common.kafka.ChatNotificationTopic;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
-import protobuf.EdaChatMessage.ChatMessage;
-import protobuf.EdaChatMessage.ChatNotification;
 
 /**
  * 오프라인 멤버에게 웹 푸시를 보내 달라고 notification 서버에 넘긴다 (토픽 chat-notification, key = channelId).
@@ -25,42 +26,34 @@ import protobuf.EdaChatMessage.ChatNotification;
 @RequiredArgsConstructor
 public class ChatNotificationPublisher {
 
-    private final KafkaTemplate<String, byte[]> kafkaTemplate;
+    private final KafkaTemplate<String, String> kafkaTemplate;
 
     /**
      * @param offlineUserIds 오프라인 멤버 ({@link ChatReceivers#offline()}). 보낸 사람은 여기서 뺀다
      * @return 발행을 시도한 이벤트 수 (받을 사람이 없으면 0)
      */
-    public int publish(String messageId, ChatMessage chatMessage, int attachmentCount, List<Long> offlineUserIds) {
+    public int publish(String messageId, ChatMessageEvent chatMessage, int attachmentCount, List<Long> offlineUserIds) {
         List<Long> receivers = offlineUserIds.stream()
-            .filter(userId -> userId != chatMessage.getSendUserId())
+            .filter(userId -> userId != chatMessage.sendUserId())
             .distinct()
             .toList();
         if (receivers.isEmpty()) {
             return 0;
         }
 
-        String key = String.valueOf(chatMessage.getChannelId());
-        String preview = ChatNotificationTopic.preview(chatMessage.getMessage());
+        String key = String.valueOf(chatMessage.channelId());
+        String preview = ChatNotificationTopic.preview(chatMessage.message());
         List<List<Long>> chunks = ChatMessageDeliveryService.chunks(receivers, ChatNotificationTopic.MAX_RECEIVERS);
         for (List<Long> chunk : chunks) {
-            ChatNotification notification = ChatNotification.newBuilder()
-                .setMessageId(messageId)
-                .setChannelId(chatMessage.getChannelId())
-                .setSenderId(chatMessage.getSendUserId())
-                .setPreview(preview)
-                .setAttachmentCount(attachmentCount)
-                .setPublishDt(chatMessage.getPublishDt())
-                .addAllReceiverUserIds(chunk)
-                .build();
-            send(key, notification);
+            send(key, new ChatNotificationEvent(messageId, chatMessage.channelId(), chatMessage.sendUserId(), preview,
+                attachmentCount, chatMessage.publishDt(), chunk));
         }
         return chunks.size();
     }
 
-    private void send(String key, ChatNotification notification) {
+    private void send(String key, ChatNotificationEvent notification) {
         try {
-            kafkaTemplate.send(ChatNotificationTopic.TOPIC, key, notification.toByteArray())
+            kafkaTemplate.send(ChatNotificationTopic.TOPIC, key, EventJson.write(notification))
                 .whenComplete((result, error) -> {
                     if (error != null) {
                         warnDropped(notification, error);
@@ -72,8 +65,8 @@ public class ChatNotificationPublisher {
         }
     }
 
-    private static void warnDropped(ChatNotification notification, Throwable error) {
+    private static void warnDropped(ChatNotificationEvent notification, Throwable error) {
         log.warn("[chat-notification] publish fail, notification dropped messageId : {}, channelId : {}, receivers : {}, error : {}",
-            notification.getMessageId(), notification.getChannelId(), notification.getReceiverUserIdsCount(), error.getMessage());
+            notification.messageId(), notification.channelId(), notification.receiverUserIds().size(), error.getMessage());
     }
 }

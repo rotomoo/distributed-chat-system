@@ -11,7 +11,7 @@ spring:
       - localhost:9194
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer # 값 = 이벤트 JSON (common EventJson)
 
 eureka:
   client:
@@ -38,7 +38,7 @@ spring:
       - kafka-1:9192
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer # 값 = 이벤트 JSON (common EventJson)
 
 eureka:
   client:

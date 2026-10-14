@@ -1,5 +1,8 @@
 package com.distributed.chat.system.kafka.consumer.service;
 
+import com.distributed.chat.system.common.event.ChatMessageDelivery;
+import com.distributed.chat.system.common.event.ChatMessageEvent;
+import com.distributed.chat.system.common.event.ChatReactionDelivery;
 import com.distributed.chat.system.common.redis.ChatPresenceKeys;
 import com.distributed.chat.system.common.redis.ChatServers;
 import com.distributed.chat.system.kafka.consumer.feign.ChatServerClient;
@@ -25,10 +28,6 @@ import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.stereotype.Service;
-import protobuf.EdaChatMessage;
-import protobuf.EdaChatMessage.ChatMessage;
-import protobuf.EdaChatMessage.ChatMessageDelivery;
-import protobuf.EdaChatMessage.ChatReactionDelivery;
 
 /**
  * 채널 멤버(호출하는 쪽이 MySQL channel_user 에서 읽어 넘김)에게 메시지 / 리액션을 전달한다.
@@ -73,43 +72,30 @@ public class ChatMessageDeliveryService {
      * @param attachments 컨슈머가 확인한 첨부 (없으면 빈 목록)
      * @param receivers   {@link #locate} 결과. 접속한 멤버(보낸 사람 포함 — 보낸 사람의 다른 기기에도 간다)에게만 보낸다
      */
-    public void deliver(String messageId, ChatMessage chatMessage, List<Attachment> attachments, ChatReceivers receivers) {
-        List<EdaChatMessage.Attachment> attachmentProtos = attachments.stream()
-            .map(attachment -> EdaChatMessage.Attachment.newBuilder()
-                .setFileId(attachment.fileId())
-                .setName(attachment.name() == null ? "" : attachment.name())
-                .setContentType(attachment.contentType() == null ? "" : attachment.contentType())
-                .setSize(attachment.size())
-                .build())
+    public void deliver(String messageId, ChatMessageEvent chatMessage, List<Attachment> attachments, ChatReceivers receivers) {
+        // 이름 / 형식이 없는 첨부는 "" 로 간다 (ChatMessageDelivery.Attachment)
+        List<ChatMessageDelivery.Attachment> deliveredAttachments = attachments.stream()
+            .map(attachment -> new ChatMessageDelivery.Attachment(
+                attachment.fileId(), attachment.name(), attachment.contentType(), attachment.size()))
             .toList();
 
         deliverToChatServers(receivers.byChatServer(), (chatServerUri, receiveUserIds) ->
-            chatServerClient.deliver(chatServerUri, ChatMessageDelivery.newBuilder()
-                .setMessageId(messageId)
-                .setChatMessage(chatMessage)
-                .addAllReceiveUserIds(receiveUserIds)
-                .addAllAttachments(attachmentProtos)
-                .build()));
+            chatServerClient.deliver(chatServerUri,
+                new ChatMessageDelivery(messageId, chatMessage, receiveUserIds, deliveredAttachments)));
     }
 
     /**
      * @param reactions 바뀐 뒤의 그 메시지 reactions 전체 (클라이언트는 통째로 교체)
      */
     public void deliverReaction(Long channelId, String messageId, List<Reaction> reactions, Collection<Long> memberIds) {
-        List<EdaChatMessage.Reaction> reactionProtos = reactions.stream()
-            .map(reaction -> EdaChatMessage.Reaction.newBuilder()
-                .setEmoji(reaction.emoji())
-                .addAllUserIds(reaction.userIds() == null ? List.of() : reaction.userIds())
-                .build())
+        // 누른 사람 목록이 없으면 빈 목록 (ChatReactionDelivery.Reaction)
+        List<ChatReactionDelivery.Reaction> deliveredReactions = reactions.stream()
+            .map(reaction -> new ChatReactionDelivery.Reaction(reaction.emoji(), reaction.userIds()))
             .toList();
 
         deliverToChatServers(locate(memberIds).byChatServer(), (chatServerUri, receiveUserIds) ->
-            chatServerClient.deliverReaction(chatServerUri, ChatReactionDelivery.newBuilder()
-                .setMessageId(messageId)
-                .setChannelId(channelId)
-                .addAllReactions(reactionProtos)
-                .addAllReceiveUserIds(receiveUserIds)
-                .build()));
+            chatServerClient.deliverReaction(chatServerUri,
+                new ChatReactionDelivery(messageId, channelId, deliveredReactions, receiveUserIds)));
     }
 
     private void deliverToChatServers(Map<String, List<Long>> receiversByChatServer, BiConsumer<URI, List<Long>> send) {

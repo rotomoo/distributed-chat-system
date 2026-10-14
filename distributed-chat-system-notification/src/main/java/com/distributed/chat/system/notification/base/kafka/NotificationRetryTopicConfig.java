@@ -1,5 +1,6 @@
 package com.distributed.chat.system.notification.base.kafka;
 
+import com.distributed.chat.system.common.event.MalformedEventException;
 import com.distributed.chat.system.common.kafka.ChatNotificationTopic;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -13,7 +14,8 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 /**
  * kafka-consumer 와 같은 막히지 않는 재시도 (재시도 토픽 + DLT). 알림은 늦게 가면 의미가 줄어서 짧게 몇 번만 한다
- * (기본 2초 간격 3번 시도 → chat-notification-retry → chat-notification-dlt, {@link NotificationDeadLetterHandler} 는 로그만)
+ * (기본 2초 간격 3번 시도 → chat-notification-retry → chat-notification-dlt, {@link NotificationDeadLetterHandler} 는 로그만).
+ * 읽을 수 없는 값({@link MalformedEventException})은 다시 해도 같으므로 재시도 없이 바로 DLT
  */
 @Configuration
 @EnableKafkaRetryTopic
@@ -30,6 +32,7 @@ public class NotificationRetryTopicConfig {
             .includeTopic(ChatNotificationTopic.TOPIC)
             .maxAttempts(maxAttempts)
             .fixedBackOff(delayMs)
+            .notRetryOn(MalformedEventException.class)
             .autoCreateTopicsWith(topicPartitions, (short) -1)
             .dltHandlerMethod(NotificationDeadLetterHandler.BEAN_NAME, "handle")
             .create(kafkaTemplate);

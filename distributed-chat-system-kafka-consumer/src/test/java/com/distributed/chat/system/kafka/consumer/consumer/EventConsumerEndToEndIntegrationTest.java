@@ -3,12 +3,19 @@ package com.distributed.chat.system.kafka.consumer.consumer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+import com.distributed.chat.system.common.event.ChatMessageDelivery;
+import com.distributed.chat.system.common.event.ChatMessageEvent;
+import com.distributed.chat.system.common.event.ChatNotificationEvent;
+import com.distributed.chat.system.common.event.ChatReactionDelivery;
+import com.distributed.chat.system.common.event.ChatReactionEvent;
+import com.distributed.chat.system.common.event.EventJson;
 import com.distributed.chat.system.mongodb.collection.ChatMessage;
 import com.distributed.chat.system.mysql.entity.ChannelUser;
 import com.distributed.chat.system.mysql.repository.ChannelUserRepository;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,9 +30,7 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
-import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -47,16 +52,11 @@ import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.kafka.test.utils.KafkaTestUtils;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import protobuf.EdaChatMessage;
-import protobuf.EdaChatMessage.ChatMessageDelivery;
-import protobuf.EdaChatMessage.ChatNotification;
-import protobuf.EdaChatMessage.ChatReaction;
-import protobuf.EdaChatMessage.ChatReactionDelivery;
 
 /**
  * 컨슈머 전체 경로 : Kafka(테스트 안 브로커) → 멤버 확인(로컬 MySQL channel_user) → 저장(로컬 MongoDB)
  * → 접속 위치 MGET(로컬 Redis) → 살아 있는 채팅 서버(simple discovery, JDK HttpServer 가 채팅 서버 대신)로 전달
- * + 오프라인 멤버 알림 이벤트(chat-notification, 같은 테스트 브로커).
+ * + 오프라인 멤버 알림 이벤트(chat-notification, 같은 테스트 브로커). Kafka 값 / 채팅 서버 본문은 모두 이벤트 JSON.
  * 테스트 데이터는 실제 데이터와 겹치지 않는 큰 ID 를 쓰고 끝나면 지운다
  */
 @DisplayName("[통합] 컨슈머 전체 경로 (MySQL 멤버 → MongoDB 저장 → Redis 위치 → 채팅 서버 전달) 테스트")
@@ -72,7 +72,7 @@ class EventConsumerEndToEndIntegrationTest {
 
     private static final Duration WAIT = Duration.ofSeconds(30);
 
-    private record ReceivedRequest(String path, byte[] body) {
+    private record ReceivedRequest(String path, String contentType, String body) {
     }
 
     private static final List<ReceivedRequest> RECEIVED = new CopyOnWriteArrayList<>();
@@ -102,9 +102,9 @@ class EventConsumerEndToEndIntegrationTest {
     @Qualifier("notificationMongoTemplate")
     private MongoTemplate mongoTemplate;
 
-    private KafkaTemplate<String, byte[]> kafkaTemplate;
-    private Consumer<String, byte[]> notificationConsumer;
-    private final List<ChatNotification> notifications = new ArrayList<>();
+    private KafkaTemplate<String, String> kafkaTemplate;
+    private Consumer<String, String> notificationConsumer;
+    private final List<ChatNotificationEvent> notifications = new ArrayList<>();
 
     private Long channelId;
     private Long sender;
@@ -120,15 +120,15 @@ class EventConsumerEndToEndIntegrationTest {
         FAILURES_LEFT.set(0);
         Map<String, Object> props = KafkaTestUtils.producerProps(embeddedKafkaBroker);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         kafkaTemplate = new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(props));
 
         // chat-notification 을 처음부터 읽는 테스트 전용 컨슈머 (다른 테스트의 채널 알림은 key 로 걸러낸다)
         Map<String, Object> consumerProps = KafkaTestUtils.consumerProps("e2e-" + UUID.randomUUID(), "false", embeddedKafkaBroker);
         consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-        notificationConsumer = new DefaultKafkaConsumerFactory<String, byte[]>(consumerProps).createConsumer();
+        consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        notificationConsumer = new DefaultKafkaConsumerFactory<String, String>(consumerProps).createConsumer();
         notificationConsumer.subscribe(List.of("chat-notification"));
         notifications.clear();
 
@@ -171,12 +171,15 @@ class EventConsumerEndToEndIntegrationTest {
 
         // then
         await().atMost(WAIT).until(() -> deliveries("/internal/chat/deliver").size() == 1);
-        ChatMessageDelivery delivery = ChatMessageDelivery.parseFrom(deliveries("/internal/chat/deliver").get(0));
-        assertThat(delivery.getReceiveUserIdsList()).containsExactlyInAnyOrder(sender, online);
-        assertThat(delivery.getChatMessage().getMessage()).isEqualTo("점심 뭐 먹을까요?");
+        ChatMessageDelivery delivery = messageDelivery(0);
+        assertThat(delivery.receiveUserIds()).containsExactlyInAnyOrder(sender, online);
+        assertThat(delivery.chatMessage().message()).isEqualTo("점심 뭐 먹을까요?");
+        assertThat(delivery.chatMessage().eventId()).isEqualTo(eventId);
+        assertThat(delivery.chatMessage().sendUserId()).isEqualTo(sender);
         ChatMessage saved = mongoTemplate.findOne(Query.query(Criteria.where("eventId").is(eventId)), ChatMessage.class);
         assertThat(saved).isNotNull();
-        assertThat(delivery.getMessageId()).isEqualTo(saved.getId().toHexString());
+        assertThat(delivery.messageId()).isEqualTo(saved.getId().toHexString());
+        assertThat(RECEIVED.get(0).contentType()).startsWith("application/json");
     }
 
     @Test
@@ -192,7 +195,7 @@ class EventConsumerEndToEndIntegrationTest {
 
         // then
         await().atMost(WAIT).until(() -> deliveries("/internal/chat/deliver").size() == 1);
-        assertThat(ChatMessageDelivery.parseFrom(deliveries("/internal/chat/deliver").get(0)).getChatMessage().getMessage()).isEqualTo("정상");
+        assertThat(messageDelivery(0).chatMessage().message()).isEqualTo("정상");
         assertThat(mongoTemplate.count(Query.query(Criteria.where("eventId").is(dropped)), ChatMessage.class)).isZero();
     }
 
@@ -203,19 +206,18 @@ class EventConsumerEndToEndIntegrationTest {
         String eventId = newEventId();
         publishMessage(eventId, sender, "리액션 대상");
         await().atMost(WAIT).until(() -> deliveries("/internal/chat/deliver").size() == 1);
-        String messageId = ChatMessageDelivery.parseFrom(deliveries("/internal/chat/deliver").get(0)).getMessageId();
+        String messageId = messageDelivery(0).messageId();
 
         // when
-        kafkaTemplate.send("chat-reaction", String.valueOf(channelId), ChatReaction.newBuilder().setSendUserId(online)
-            .setChannelId(channelId).setMessageId(messageId).setEmoji("👍").setAction(ChatReaction.Action.ADD).build().toByteArray()).join();
+        kafkaTemplate.send("chat-reaction", String.valueOf(channelId), EventJson.write(new ChatReactionEvent(online, channelId, messageId, "👍",
+            ChatReactionEvent.Action.ADD, System.currentTimeMillis()))).join();
 
         // then
         await().atMost(WAIT).until(() -> deliveries("/internal/chat/deliver-reaction").size() == 1);
-        ChatReactionDelivery delivery = ChatReactionDelivery.parseFrom(deliveries("/internal/chat/deliver-reaction").get(0));
-        assertThat(delivery.getMessageId()).isEqualTo(messageId);
-        assertThat(delivery.getReceiveUserIdsList()).containsExactlyInAnyOrder(sender, online);
-        assertThat(delivery.getReactions(0).getEmoji()).isEqualTo("👍");
-        assertThat(delivery.getReactions(0).getUserIdsList()).containsExactly(online);
+        ChatReactionDelivery delivery = EventJson.read(deliveries("/internal/chat/deliver-reaction").get(0), ChatReactionDelivery.class);
+        assertThat(delivery.messageId()).isEqualTo(messageId);
+        assertThat(delivery.receiveUserIds()).containsExactlyInAnyOrder(sender, online);
+        assertThat(delivery.reactions()).containsExactly(new ChatReactionDelivery.Reaction("👍", List.of(online)));
     }
 
     @Test
@@ -230,8 +232,8 @@ class EventConsumerEndToEndIntegrationTest {
 
         // then
         await().atMost(WAIT).until(() -> deliveries("/internal/chat/deliver").size() == 2);
-        String first = ChatMessageDelivery.parseFrom(deliveries("/internal/chat/deliver").get(0)).getMessageId();
-        String second = ChatMessageDelivery.parseFrom(deliveries("/internal/chat/deliver").get(1)).getMessageId();
+        String first = messageDelivery(0).messageId();
+        String second = messageDelivery(1).messageId();
         assertThat(second).isEqualTo(first);
         assertThat(mongoTemplate.count(Query.query(Criteria.where("eventId").is(eventId)), ChatMessage.class)).isEqualTo(1);
         TimeUnit.MILLISECONDS.sleep(500);
@@ -249,14 +251,14 @@ class EventConsumerEndToEndIntegrationTest {
 
         // then
         await().atMost(WAIT).until(() -> pollNotifications().size() == 1);
-        ChatNotification notification = notifications.get(0);
+        ChatNotificationEvent notification = notifications.get(0);
         ChatMessage saved = mongoTemplate.findOne(Query.query(Criteria.where("eventId").is(eventId)), ChatMessage.class);
-        assertThat(notification.getMessageId()).isEqualTo(saved.getId().toHexString());
-        assertThat(notification.getChannelId()).isEqualTo(channelId);
-        assertThat(notification.getSenderId()).isEqualTo(sender);
-        assertThat(notification.getPreview()).isEqualTo("점심 뭐 먹을까요?");
-        assertThat(notification.getAttachmentCount()).isZero();
-        assertThat(notification.getReceiverUserIdsList()).containsExactlyInAnyOrder(offline, onDeadServer);
+        assertThat(notification.messageId()).isEqualTo(saved.getId().toHexString());
+        assertThat(notification.channelId()).isEqualTo(channelId);
+        assertThat(notification.senderId()).isEqualTo(sender);
+        assertThat(notification.preview()).isEqualTo("점심 뭐 먹을까요?");
+        assertThat(notification.attachmentCount()).isZero();
+        assertThat(notification.receiverUserIds()).containsExactlyInAnyOrder(offline, onDeadServer);
     }
 
     @Test
@@ -265,38 +267,41 @@ class EventConsumerEndToEndIntegrationTest {
         // given : 메시지 한 건 (알림 1건)
         publishMessage(newEventId(), sender, "리액션 대상");
         await().atMost(WAIT).until(() -> deliveries("/internal/chat/deliver").size() == 1);
-        String messageId = ChatMessageDelivery.parseFrom(deliveries("/internal/chat/deliver").get(0)).getMessageId();
+        String messageId = messageDelivery(0).messageId();
 
         // when
-        kafkaTemplate.send("chat-reaction", String.valueOf(channelId), ChatReaction.newBuilder().setSendUserId(online)
-            .setChannelId(channelId).setMessageId(messageId).setEmoji("🎉").setAction(ChatReaction.Action.ADD).build().toByteArray()).join();
+        kafkaTemplate.send("chat-reaction", String.valueOf(channelId), EventJson.write(new ChatReactionEvent(online, channelId, messageId, "🎉",
+            ChatReactionEvent.Action.ADD, System.currentTimeMillis()))).join();
 
         // then : 리액션 전달이 끝난 뒤에도 알림은 메시지 것 한 건뿐
         await().atMost(WAIT).until(() -> deliveries("/internal/chat/deliver-reaction").size() == 1);
         TimeUnit.MILLISECONDS.sleep(500);
         assertThat(pollNotifications()).hasSize(1);
-        assertThat(notifications.get(0).getMessageId()).isEqualTo(messageId);
+        assertThat(notifications.get(0).messageId()).isEqualTo(messageId);
     }
 
     /**
      * 이 테스트 채널(key)의 알림 이벤트를 지금까지 받은 것까지 모아 돌려준다
      */
-    private List<ChatNotification> pollNotifications() throws Exception {
-        for (ConsumerRecord<String, byte[]> record : notificationConsumer.poll(Duration.ofMillis(200))) {
+    private List<ChatNotificationEvent> pollNotifications() {
+        for (ConsumerRecord<String, String> record : notificationConsumer.poll(Duration.ofMillis(200))) {
             if (String.valueOf(channelId).equals(record.key())) {
-                notifications.add(ChatNotification.parseFrom(record.value()));
+                notifications.add(EventJson.read(record.value(), ChatNotificationEvent.class));
             }
         }
         return notifications;
     }
 
     private void publishMessage(String eventId, Long sendUserId, String text) {
-        EdaChatMessage.ChatMessage chatMessage = EdaChatMessage.ChatMessage.newBuilder().setEventId(eventId).setSendUserId(sendUserId)
-            .setChannelId(channelId).setMessage(text).setPublishDt(System.currentTimeMillis()).build();
-        kafkaTemplate.send("chat-send-message", String.valueOf(channelId), chatMessage.toByteArray()).join();
+        ChatMessageEvent chatMessage = new ChatMessageEvent(eventId, sendUserId, channelId, text, System.currentTimeMillis(), List.of());
+        kafkaTemplate.send("chat-send-message", String.valueOf(channelId), EventJson.write(chatMessage)).join();
     }
 
-    private static List<byte[]> deliveries(String path) {
+    private static ChatMessageDelivery messageDelivery(int index) {
+        return EventJson.read(deliveries("/internal/chat/deliver").get(index), ChatMessageDelivery.class);
+    }
+
+    private static List<String> deliveries(String path) {
         return RECEIVED.stream().filter(request -> request.path().equals(path)).map(ReceivedRequest::body).toList();
     }
 
@@ -311,7 +316,8 @@ class EventConsumerEndToEndIntegrationTest {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.setExecutor(Executors.newCachedThreadPool());
             server.createContext("/", exchange -> {
-                RECEIVED.add(new ReceivedRequest(exchange.getRequestURI().getPath(), exchange.getRequestBody().readAllBytes()));
+                RECEIVED.add(new ReceivedRequest(exchange.getRequestURI().getPath(), exchange.getRequestHeaders().getFirst("Content-Type"),
+                    new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
                 int status = FAILURES_LEFT.getAndUpdate(left -> Math.max(0, left - 1)) > 0 ? 500 : 200;
                 exchange.sendResponseHeaders(status, -1);
                 exchange.close();

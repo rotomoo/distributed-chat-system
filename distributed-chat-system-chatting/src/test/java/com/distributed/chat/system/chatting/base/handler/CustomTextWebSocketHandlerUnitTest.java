@@ -18,6 +18,12 @@ import static org.mockito.Mockito.when;
 
 import com.distributed.chat.system.chatting.base.presence.UserLocationRegistry;
 import com.distributed.chat.system.chatting.web.controller.feign.KafkaProducerClient;
+import com.distributed.chat.system.common.event.ChatMessageDelivery;
+import com.distributed.chat.system.common.event.ChatMessageDelivery.Attachment;
+import com.distributed.chat.system.common.event.ChatMessageEvent;
+import com.distributed.chat.system.common.event.ChatReactionDelivery;
+import com.distributed.chat.system.common.event.ChatReactionDelivery.Reaction;
+import com.distributed.chat.system.common.event.ChatReactionEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Duration;
@@ -53,12 +59,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
-import protobuf.EdaChatMessage.ChatMessage;
-import protobuf.EdaChatMessage.Attachment;
-import protobuf.EdaChatMessage.ChatMessageDelivery;
-import protobuf.EdaChatMessage.ChatReaction;
-import protobuf.EdaChatMessage.ChatReactionDelivery;
-import protobuf.EdaChatMessage.Reaction;
 
 @DisplayName("[단위] CustomTextWebSocketHandler 테스트")
 @ExtendWith(MockitoExtension.class)
@@ -260,11 +260,11 @@ class CustomTextWebSocketHandlerUnitTest {
         handler.handleMessage(pc, new TextMessage("{\"type\":\"message\",\"channelId\":7,\"message\":\"안녕\"}"));
 
         // assert
-        ArgumentCaptor<ChatMessage> published = ArgumentCaptor.forClass(ChatMessage.class);
+        ArgumentCaptor<ChatMessageEvent> published = ArgumentCaptor.forClass(ChatMessageEvent.class);
         verify(kafkaProducerClient).publishChatSendMessage(published.capture());
-        assertThat(published.getValue().getChannelId()).isEqualTo(7L);
-        assertThat(published.getValue().getSendUserId()).isEqualTo(5L);
-        assertThat(published.getValue().getMessage()).isEqualTo("안녕");
+        assertThat(published.getValue().channelId()).isEqualTo(7L);
+        assertThat(published.getValue().sendUserId()).isEqualTo(5L);
+        assertThat(published.getValue().message()).isEqualTo("안녕");
         verify(pc, never()).sendMessage(errorFrame(3003));
     }
 
@@ -516,7 +516,7 @@ class CustomTextWebSocketHandlerUnitTest {
 
         // assert
         verify(userLocationRegistry, times(2)).writePresence(USER_ID, chatServerOf(pc), "online");
-        verify(kafkaProducerClient).publishChatSendMessage(any(ChatMessage.class));
+        verify(kafkaProducerClient).publishChatSendMessage(any(ChatMessageEvent.class));
     }
 
     @Test
@@ -535,7 +535,7 @@ class CustomTextWebSocketHandlerUnitTest {
         // assert
         verify(pc).sendMessage(argThat(message ->
             message instanceof TextMessage text && text.getPayload().contains("\"type\":\"connected\"")));
-        verify(kafkaProducerClient).publishChatSendMessage(any(ChatMessage.class));
+        verify(kafkaProducerClient).publishChatSendMessage(any(ChatMessageEvent.class));
         verify(userLocationRegistry, times(2)).writePresence(USER_ID, chatServerOf(pc), "online");
         assertThat(handler.getSessions(USER_ID)).hasSize(1);
     }
@@ -610,10 +610,10 @@ class CustomTextWebSocketHandlerUnitTest {
             + "{\"fileId\":\"000000000000000000000001\",\"name\":\"믿지 않는 이름\"}]}"));
 
         // assert
-        ArgumentCaptor<ChatMessage> published = ArgumentCaptor.forClass(ChatMessage.class);
+        ArgumentCaptor<ChatMessageEvent> published = ArgumentCaptor.forClass(ChatMessageEvent.class);
         verify(kafkaProducerClient).publishChatSendMessage(published.capture());
-        assertThat(published.getValue().getMessage()).isEmpty();
-        assertThat(published.getValue().getAttachmentFileIdsList())
+        assertThat(published.getValue().message()).isEmpty();
+        assertThat(published.getValue().attachmentFileIds())
             .containsExactly("6acc66675f99715e286f0f6e", "000000000000000000000001");
     }
 
@@ -627,9 +627,9 @@ class CustomTextWebSocketHandlerUnitTest {
         handler.handleMessage(pc, new TextMessage(messageWithAttachments(10)));
 
         // assert
-        ArgumentCaptor<ChatMessage> published = ArgumentCaptor.forClass(ChatMessage.class);
+        ArgumentCaptor<ChatMessageEvent> published = ArgumentCaptor.forClass(ChatMessageEvent.class);
         verify(kafkaProducerClient).publishChatSendMessage(published.capture());
-        assertThat(published.getValue().getAttachmentFileIdsList()).hasSize(10);
+        assertThat(published.getValue().attachmentFileIds()).hasSize(10);
     }
 
     @ParameterizedTest
@@ -674,10 +674,8 @@ class CustomTextWebSocketHandlerUnitTest {
         // arrange
         WebSocketSession pc = session(USER_ID);
         handler.afterConnectionEstablished(pc);
-        ChatMessageDelivery withAttachment = delivery("", 5L).toBuilder()
-            .addAttachments(Attachment.newBuilder().setFileId("6acc66675f99715e286f0f6e").setName("사진.png")
-                .setContentType("image/png").setSize(10L).build())
-            .build();
+        ChatMessageDelivery withAttachment = new ChatMessageDelivery("message-1", delivery("", 5L).chatMessage(), List.of(5L),
+            List.of(new Attachment("6acc66675f99715e286f0f6e", "사진.png", "image/png", 10L)));
 
         // act
         handler.deliver(withAttachment);
@@ -707,16 +705,16 @@ class CustomTextWebSocketHandlerUnitTest {
         handler.handleMessage(pc, new TextMessage(reaction("6acc66675f99715e286f0f6e", "👍🏽", "remove")));
 
         // assert
-        ArgumentCaptor<ChatReaction> published = ArgumentCaptor.forClass(ChatReaction.class);
+        ArgumentCaptor<ChatReactionEvent> published = ArgumentCaptor.forClass(ChatReactionEvent.class);
         verify(kafkaProducerClient, times(2)).publishChatReaction(published.capture());
-        ChatReaction add = published.getAllValues().get(0);
-        assertThat(add.getSendUserId()).isEqualTo(5L);
-        assertThat(add.getChannelId()).isEqualTo(7L);
-        assertThat(add.getMessageId()).isEqualTo("6acc66675f99715e286f0f6e");
-        assertThat(add.getEmoji()).isEqualTo("👍🏽");
-        assertThat(add.getAction()).isEqualTo(ChatReaction.Action.ADD);
-        assertThat(add.getPublishDt()).isPositive();
-        assertThat(published.getAllValues().get(1).getAction()).isEqualTo(ChatReaction.Action.REMOVE);
+        ChatReactionEvent add = published.getAllValues().get(0);
+        assertThat(add.sendUserId()).isEqualTo(5L);
+        assertThat(add.channelId()).isEqualTo(7L);
+        assertThat(add.messageId()).isEqualTo("6acc66675f99715e286f0f6e");
+        assertThat(add.emoji()).isEqualTo("👍🏽");
+        assertThat(add.action()).isEqualTo(ChatReactionEvent.Action.ADD);
+        assertThat(add.publishDt()).isPositive();
+        assertThat(published.getAllValues().get(1).action()).isEqualTo(ChatReactionEvent.Action.REMOVE);
     }
 
     @Test
@@ -729,7 +727,7 @@ class CustomTextWebSocketHandlerUnitTest {
         handler.handleMessage(pc, new TextMessage(reaction("6acc66675f99715e286f0f6e", "😀".repeat(32), "add")));
 
         // assert
-        verify(kafkaProducerClient).publishChatReaction(any(ChatReaction.class));
+        verify(kafkaProducerClient).publishChatReaction(any(ChatReactionEvent.class));
     }
 
     @ParameterizedTest
@@ -781,11 +779,8 @@ class CustomTextWebSocketHandlerUnitTest {
         handler.afterConnectionEstablished(otherUser);
 
         // act
-        handler.deliverReaction(ChatReactionDelivery.newBuilder()
-            .setMessageId("6acc66675f99715e286f0f6e").setChannelId(7L)
-            .addReactions(Reaction.newBuilder().setEmoji("👍").addAllUserIds(List.of(5L, 9L)).build())
-            .addReceiveUserIds(5L)
-            .build());
+        handler.deliverReaction(new ChatReactionDelivery("6acc66675f99715e286f0f6e", 7L,
+            List.of(new Reaction("👍", List.of(5L, 9L))), List.of(5L)));
 
         // assert
         verify(pc).sendMessage(argThat((TextMessage frame) -> frame.getPayload().contains("\"type\":\"reaction\"")));
@@ -930,10 +925,10 @@ class CustomTextWebSocketHandlerUnitTest {
         handler.handleMessage(pc, new TextMessage("{\"type\":\"message\",\"channelId\":0,\"message\":\"형식 오류\"}"));
 
         // assert
-        ArgumentCaptor<ChatMessage> published = ArgumentCaptor.forClass(ChatMessage.class);
+        ArgumentCaptor<ChatMessageEvent> published = ArgumentCaptor.forClass(ChatMessageEvent.class);
         verify(kafkaProducerClient, times(2)).publishChatSendMessage(published.capture());
-        String first = published.getAllValues().get(0).getEventId();
-        String second = published.getAllValues().get(1).getEventId();
+        String first = published.getAllValues().get(0).eventId();
+        String second = published.getAllValues().get(1).eventId();
         assertThat(java.util.UUID.fromString(first)).isNotNull();
         assertThat(first).isNotEqualTo(second);
     }
@@ -994,16 +989,9 @@ class CustomTextWebSocketHandlerUnitTest {
     }
 
     private ChatMessageDelivery delivery(String message, Long... receiveUserIds) {
-        return ChatMessageDelivery.newBuilder()
-            .setMessageId("message-1")
-            .setChatMessage(ChatMessage.newBuilder()
-                .setSendUserId(9L)
-                .setChannelId(0L)
-                .setMessage(message)
-                .setPublishDt(System.currentTimeMillis())
-                .build())
-            .addAllReceiveUserIds(List.of(receiveUserIds))
-            .build();
+        return new ChatMessageDelivery("message-1",
+            new ChatMessageEvent("event-1", 9L, 0L, message, System.currentTimeMillis(), List.of()),
+            List.of(receiveUserIds), List.of());
     }
 
     private interface SessionTask {

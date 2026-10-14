@@ -1,5 +1,6 @@
 package com.distributed.chat.system.kafka.consumer.base.kafka;
 
+import com.distributed.chat.system.common.event.MalformedEventException;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -22,7 +23,9 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
  *   <li>다시 전달된 메시지는 클라이언트가 messageId 로 걸러내고, 리액션은 전체 교체라 몇 번 받아도 같다</li>
  *   <li>대가 : 재시도로 늦게 저장된 메시지는 그 사이 저장된 메시지보다 뒤(_id)에 놓인다</li>
  * </ul>
- * 대기 시간은 chat.kafka.retry.delays-ms (기본 1000,5000,30000), 시도 수 = 대기 수 + 1
+ * 대기 시간은 chat.kafka.retry.delays-ms (기본 1000,5000,30000), 시도 수 = 대기 수 + 1.
+ * 이벤트로 읽을 수 없는 값({@link MalformedEventException})은 다시 해도 같으므로 재시도 토픽을 거치지 않고 바로 DLT 로 보낸다
+ * (파티션을 막거나 같은 실패를 되풀이하지 않고, 레코드는 DLT 에 남아 확인할 수 있다)
  */
 @Configuration
 @EnableKafkaRetryTopic
@@ -38,6 +41,7 @@ public class KafkaRetryTopicConfig {
             .includeTopics(ChatTopics.ALL)
             .maxAttempts(delaysMs.size() + 1)
             .customBackoff(new FixedSequenceBackOffPolicy(delaysMs))
+            .notRetryOn(MalformedEventException.class)
             .autoCreateTopicsWith(topicPartitions, (short) -1)
             .dltHandlerMethod(DeadLetterHandler.BEAN_NAME, "handle")
             .create(kafkaTemplate);

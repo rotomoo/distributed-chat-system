@@ -1,5 +1,6 @@
 package com.distributed.chat.system.notification.service;
 
+import com.distributed.chat.system.common.event.ChatNotificationEvent;
 import com.distributed.chat.system.mysql.entity.Channel;
 import com.distributed.chat.system.mysql.entity.User;
 import com.distributed.chat.system.mysql.entity.WebPushSubscription;
@@ -18,7 +19,6 @@ import java.util.concurrent.CompletionException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import protobuf.EdaChatMessage.ChatNotification;
 
 /**
  * 알림 이벤트 한 건(받는 사람 최대 500명)을 웹 푸시로 보낸다. 조회는 이벤트당 한 번씩만 (사람마다 하지 않는다)
@@ -64,19 +64,19 @@ public class NotificationService {
     /**
      * @return 보낸 푸시 결과 (테스트 / 로그용)
      */
-    public List<PushResult> notify(ChatNotification notification) {
-        List<Long> receivers = notification.getReceiverUserIdsList().stream().distinct().toList();
+    public List<PushResult> notify(ChatNotificationEvent notification) {
+        List<Long> receivers = notification.receiverUserIds().stream().distinct().toList();
         if (receivers.isEmpty()) {
             return List.of();
         }
 
-        Optional<Channel> channel = channelRepository.findByIdAndDeleteYnIsFalse(notification.getChannelId());
+        Optional<Channel> channel = channelRepository.findByIdAndDeleteYnIsFalse(notification.channelId());
         if (channel.isEmpty()) {
-            log.info("[notification] channel not found, dropped messageId : {}, channelId : {}", notification.getMessageId(), notification.getChannelId());
+            log.info("[notification] channel not found, dropped messageId : {}, channelId : {}", notification.messageId(), notification.channelId());
             return List.of();
         }
 
-        List<Long> unmuted = channelUserRepository.findUnmutedMemberUserIds(notification.getChannelId(), receivers);
+        List<Long> unmuted = channelUserRepository.findUnmutedMemberUserIds(notification.channelId(), receivers);
         if (unmuted.isEmpty()) {
             return List.of();
         }
@@ -87,15 +87,15 @@ public class NotificationService {
         }
 
         Set<Long> allowed = notificationThrottle.acquire(subscriptions.stream().map(WebPushSubscription::getUserId).distinct().toList(),
-            notification.getChannelId());
+            notification.channelId());
         List<WebPushSubscription> targets = subscriptions.stream().filter(subscription -> allowed.contains(subscription.getUserId())).toList();
         if (targets.isEmpty()) {
             return List.of();
         }
 
-        String senderName = userRepository.findById(notification.getSenderId()).map(NotificationService::displayName).orElse(null);
+        String senderName = userRepository.findById(notification.senderId()).map(NotificationService::displayName).orElse(null);
         byte[] payload = toJson(WebPushPayload.of(channel.get(), senderName, notification));
-        String topic = WebPushPayload.tag(notification.getChannelId());
+        String topic = WebPushPayload.tag(notification.channelId());
 
         List<CompletableFuture<PushResult>> sends = targets.stream()
             .map(subscription -> webPushSender.send(subscription, payload, topic)
@@ -111,7 +111,7 @@ public class NotificationService {
             } else if (!result.succeeded()) {
                 // 일시적 오류 (429, 5xx, 연결 실패, 타임아웃) : 구독은 그대로 두고 이번 알림만 버린다
                 log.warn("[notification] push fail userId : {}, messageId : {}, status : {}, error : {}", result.subscription().getUserId(),
-                    notification.getMessageId(), result.status(), result.error() == null ? null : result.error().getMessage());
+                    notification.messageId(), result.status(), result.error() == null ? null : result.error().getMessage());
             }
         }
         return results;

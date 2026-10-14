@@ -12,6 +12,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.distributed.chat.system.common.event.ChatNotificationEvent;
+import com.distributed.chat.system.common.event.EventJson;
 import com.distributed.chat.system.common.redis.NotificationKeys;
 import com.distributed.chat.system.mysql.entity.Channel;
 import com.distributed.chat.system.mysql.entity.ChannelUser;
@@ -31,6 +33,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import jakarta.servlet.http.Cookie;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -60,7 +63,6 @@ import javax.crypto.spec.SecretKeySpec;
 import nl.martijndwars.webpush.Utils;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.interfaces.ECPublicKey;
@@ -81,6 +83,7 @@ import org.springframework.http.MediaType;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.test.EmbeddedKafkaBroker;
+import org.springframework.kafka.retrytopic.RetryTopicHeaders;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.kafka.test.utils.KafkaTestUtils;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -89,7 +92,6 @@ import org.springframework.session.Session;
 import org.springframework.session.SessionRepository;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import protobuf.EdaChatMessage.ChatNotification;
 
 /**
  * 알림 서버 전체 경로 : Kafka(테스트 안 브로커) chat-notification → 음소거 / 구독(로컬 MySQL) → 30초 묶기(로컬 Redis)
@@ -170,7 +172,7 @@ class NotificationIntegrationTest {
     @SuppressWarnings("rawtypes")
     private SessionRepository sessionRepository;
 
-    private KafkaTemplate<String, byte[]> kafkaTemplate;
+    private KafkaTemplate<String, String> kafkaTemplate;
 
     private final List<Long> userIds = new ArrayList<>();
     private final List<Long> channelIds = new ArrayList<>();
@@ -201,7 +203,7 @@ class NotificationIntegrationTest {
         STATUS_BY_PATH.clear();
         Map<String, Object> props = KafkaTestUtils.producerProps(embeddedKafkaBroker);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         kafkaTemplate = new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(props));
 
         sender = saveUser("철수");
@@ -366,13 +368,42 @@ class NotificationIntegrationTest {
 
         // then
         @SuppressWarnings("unchecked")
-        ArgumentCaptor<ConsumerRecord<String, byte[]>> dlt = ArgumentCaptor.forClass(ConsumerRecord.class);
+        ArgumentCaptor<ConsumerRecord<String, String>> dlt = ArgumentCaptor.forClass(ConsumerRecord.class);
         await().atMost(WAIT).untilAsserted(() -> verify(notificationDeadLetterHandler, atLeast(1)).handle(dlt.capture()));
-        ConsumerRecord<String, byte[]> record = dlt.getAllValues().stream()
+        ConsumerRecord<String, String> record = dlt.getAllValues().stream()
             .filter(candidate -> String.valueOf(channelId).equals(candidate.key())).findFirst().orElseThrow();
         assertThat(record.topic()).isEqualTo("chat-notification-dlt");
         verify(channelRepository, times(3)).findByIdAndDeleteYnIsFalse(channelId);
         assertThat(requests(pc)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("fail case : 읽을 수 없는 알림(깨진 JSON, 예전 바이너리 값)은 재시도 없이 바로 DLT 에서 로그만 남기고 버리고, 뒤의 알림은 그대로 보낸다")
+    void 읽을_수_없는_알림은_재시도_없이_바로_DLT_에서_버리고_뒤의_알림은_그대로_보낸다() {
+        // given
+        Long channelId = saveChannel(ChannelType.PUBLIC, "malformed-" + UUID.randomUUID().toString().substring(0, 6));
+        join(channelId, alice, false);
+        String pc = subscribe(alice, browserKeys());
+        String brokenKey = "broken-" + UUID.randomUUID();
+
+        // when : 읽을 수 없는 값 뒤에 정상 알림
+        kafkaTemplate.send("chat-notification", brokenKey, "{\"messageId\":").join();
+        publish(channelId, List.of(alice), "뒤의 정상 알림", 0);
+
+        // then
+        await().atMost(WAIT).until(() -> requests(pc).size() == 1);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<ConsumerRecord<String, String>> dlt = ArgumentCaptor.forClass(ConsumerRecord.class);
+        await().atMost(WAIT).untilAsserted(() -> {
+            verify(notificationDeadLetterHandler, atLeast(1)).handle(dlt.capture());
+            assertThat(dlt.getAllValues()).anyMatch(candidate -> brokenKey.equals(candidate.key()));
+        });
+        ConsumerRecord<String, String> record = dlt.getAllValues().stream()
+            .filter(candidate -> brokenKey.equals(candidate.key())).findFirst().orElseThrow();
+        assertThat(record.topic()).isEqualTo("chat-notification-dlt");
+        // 원래 토픽에서 1번 실패하고 바로 DLT (재시도 토픽을 거쳤으면 4)
+        byte[] attempts = record.headers().lastHeader(RetryTopicHeaders.DEFAULT_HEADER_ATTEMPTS).value();
+        assertThat(attempts.length == Integer.BYTES ? ByteBuffer.wrap(attempts).getInt() : new BigInteger(attempts).intValue()).isEqualTo(2);
     }
 
     // ── 구독 API ────────────────────────────────────────────────
@@ -481,10 +512,9 @@ class NotificationIntegrationTest {
     // ── 도우미 ──────────────────────────────────────────────────
 
     private void publish(Long channelId, List<Long> receivers, String preview, int attachments) {
-        ChatNotification notification = ChatNotification.newBuilder().setMessageId(UUID.randomUUID().toString()).setChannelId(channelId)
-            .setSenderId(sender).setPreview(preview).setAttachmentCount(attachments).setPublishDt(System.currentTimeMillis())
-            .addAllReceiverUserIds(receivers).build();
-        kafkaTemplate.send("chat-notification", String.valueOf(channelId), notification.toByteArray()).join();
+        ChatNotificationEvent notification = new ChatNotificationEvent(UUID.randomUUID().toString(), channelId, sender, preview, attachments,
+            System.currentTimeMillis(), receivers);
+        kafkaTemplate.send("chat-notification", String.valueOf(channelId), EventJson.write(notification)).join();
     }
 
     /**

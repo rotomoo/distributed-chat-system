@@ -2,6 +2,10 @@ package com.distributed.chat.system.chatting.base.handler;
 
 import com.distributed.chat.system.chatting.base.presence.UserLocationRegistry;
 import com.distributed.chat.system.chatting.web.controller.feign.KafkaProducerClient;
+import com.distributed.chat.system.common.event.ChatMessageDelivery;
+import com.distributed.chat.system.common.event.ChatMessageEvent;
+import com.distributed.chat.system.common.event.ChatReactionDelivery;
+import com.distributed.chat.system.common.event.ChatReactionEvent;
 import com.distributed.chat.system.common.exception.ErrorCode;
 import com.distributed.chat.system.common.redis.ChatPresenceKeys;
 import com.distributed.chat.system.common.util.NetworkUtil;
@@ -29,10 +33,6 @@ import org.springframework.web.socket.WebSocketMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
-import protobuf.EdaChatMessage.ChatMessage;
-import protobuf.EdaChatMessage.ChatMessageDelivery;
-import protobuf.EdaChatMessage.ChatReaction;
-import protobuf.EdaChatMessage.ChatReactionDelivery;
 
 /**
  * 한 유저가 여러 기기(PC, 폰, 탭)로 동시에 접속할 수 있다.
@@ -182,15 +182,14 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
 
         log.info("{} sent to channel {}", webSocketSession.getId(), channelId);
 
-        ChatMessage chatMessage = ChatMessage.newBuilder()
-            .setSendUserId(Long.parseLong(userId))
-            .setChannelId(channelId)
-            .setMessage(text)
-            .addAllAttachmentFileIds(attachmentFileIds)
+        ChatMessageEvent chatMessage = new ChatMessageEvent(
             // 컨슈머가 이 값으로 한 번만 저장한다 (재시도 / 중복 발행에도 문서 1개). 메시지 ID(_id)는 저장할 때 만든다
-            .setEventId(UUID.randomUUID().toString())
-            .setPublishDt(System.currentTimeMillis())
-            .build();
+            UUID.randomUUID().toString(),
+            Long.parseLong(userId),
+            channelId,
+            text,
+            System.currentTimeMillis(),
+            attachmentFileIds);
 
         kafkaProducerClient.publishChatSendMessage(chatMessage);
     }
@@ -199,9 +198,9 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         long channelId = payload.path("channelId").asLong(0);
         String messageId = payload.path("messageId").asText("");
         String emoji = payload.path("emoji").asText("");
-        ChatReaction.Action action = switch (payload.path("action").asText()) {
-            case "add" -> ChatReaction.Action.ADD;
-            case "remove" -> ChatReaction.Action.REMOVE;
+        ChatReactionEvent.Action action = switch (payload.path("action").asText()) {
+            case "add" -> ChatReactionEvent.Action.ADD;
+            case "remove" -> ChatReactionEvent.Action.REMOVE;
             default -> null;
         };
         if (channelId <= 0 || !isObjectId(messageId) || !isValidEmoji(emoji) || action == null) {
@@ -209,15 +208,13 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-
-        kafkaProducerClient.publishChatReaction(ChatReaction.newBuilder()
-            .setSendUserId(Long.parseLong(userId))
-            .setChannelId(channelId)
-            .setMessageId(messageId.toLowerCase())
-            .setEmoji(emoji)
-            .setAction(action)
-            .setPublishDt(System.currentTimeMillis())
-            .build());
+        kafkaProducerClient.publishChatReaction(new ChatReactionEvent(
+            Long.parseLong(userId),
+            channelId,
+            messageId.toLowerCase(),
+            emoji,
+            action,
+            System.currentTimeMillis()));
     }
 
     /**
@@ -370,23 +367,23 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
      * 컨슈머가 전달한 메시지를 이 서버에 접속한 수신자들의 모든 기기에 전송
      */
     public void deliver(ChatMessageDelivery delivery) {
-        ChatMessage chatMessage = delivery.getChatMessage();
+        ChatMessageEvent chatMessage = delivery.chatMessage();
         Map<String, Object> frame = new LinkedHashMap<>();
         frame.put("type", "message");
-        frame.put("messageId", delivery.getMessageId());
-        frame.put("channelId", chatMessage.getChannelId());
-        frame.put("sendUserId", chatMessage.getSendUserId());
-        frame.put("message", chatMessage.getMessage());
-        frame.put("publishDt", chatMessage.getPublishDt());
-        frame.put("attachments", delivery.getAttachmentsList().stream()
+        frame.put("messageId", delivery.messageId());
+        frame.put("channelId", chatMessage.channelId());
+        frame.put("sendUserId", chatMessage.sendUserId());
+        frame.put("message", chatMessage.message());
+        frame.put("publishDt", chatMessage.publishDt());
+        frame.put("attachments", delivery.attachments().stream()
             .map(attachment -> Map.of(
-                "fileId", attachment.getFileId(),
-                "name", attachment.getName(),
-                "contentType", attachment.getContentType(),
-                "size", attachment.getSize()))
+                "fileId", attachment.fileId(),
+                "name", attachment.name(),
+                "contentType", attachment.contentType(),
+                "size", attachment.size()))
             .toList());
 
-        sendToReceivers(frame, delivery.getReceiveUserIdsList());
+        sendToReceivers(frame, delivery.receiveUserIds());
     }
 
     /**
@@ -395,13 +392,13 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
     public void deliverReaction(ChatReactionDelivery delivery) {
         Map<String, Object> frame = new LinkedHashMap<>();
         frame.put("type", "reaction");
-        frame.put("channelId", delivery.getChannelId());
-        frame.put("messageId", delivery.getMessageId());
-        frame.put("reactions", delivery.getReactionsList().stream()
-            .map(reaction -> Map.of("emoji", reaction.getEmoji(), "userIds", reaction.getUserIdsList()))
+        frame.put("channelId", delivery.channelId());
+        frame.put("messageId", delivery.messageId());
+        frame.put("reactions", delivery.reactions().stream()
+            .map(reaction -> Map.of("emoji", reaction.emoji(), "userIds", reaction.userIds()))
             .toList());
 
-        sendToReceivers(frame, delivery.getReceiveUserIdsList());
+        sendToReceivers(frame, delivery.receiveUserIds());
     }
 
     /**

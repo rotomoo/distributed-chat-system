@@ -14,6 +14,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.distributed.chat.system.kafka.consumer.feign.ChatServerClient;
+import com.distributed.chat.system.common.event.ChatMessageDelivery;
+import com.distributed.chat.system.common.event.ChatMessageEvent;
+import com.distributed.chat.system.common.event.ChatReactionDelivery;
 import com.distributed.chat.system.mongodb.collection.ChatMessage.Attachment;
 import com.distributed.chat.system.mongodb.collection.ChatMessage.Reaction;
 import java.net.URI;
@@ -44,9 +47,6 @@ import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
-import protobuf.EdaChatMessage.ChatMessage;
-import protobuf.EdaChatMessage.ChatMessageDelivery;
-import protobuf.EdaChatMessage.ChatReactionDelivery;
 
 @DisplayName("[단위] ChatMessageDeliveryService 테스트")
 @ExtendWith(MockitoExtension.class)
@@ -73,8 +73,7 @@ class ChatMessageDeliveryServiceUnitTest {
 
     private ChatMessageDeliveryService chatMessageDeliveryService;
 
-    private final ChatMessage chatMessage = ChatMessage.newBuilder()
-        .setSendUserId(5L).setChannelId(7L).setMessage("hello").setPublishDt(1_700_000_000_000L).build();
+    private final ChatMessageEvent chatMessage = new ChatMessageEvent("event-1", 5L, 7L, "hello", 1_700_000_000_000L, List.of());
 
     @BeforeEach
     void setup() {
@@ -285,11 +284,29 @@ class ChatMessageDeliveryServiceUnitTest {
         // assert
         ArgumentCaptor<ChatMessageDelivery> captor = ArgumentCaptor.forClass(ChatMessageDelivery.class);
         verify(chatServerClient).deliver(eq(CHAT_SERVER_1), captor.capture());
-        assertThat(captor.getValue().getMessageId()).isEqualTo("message-1");
-        assertThat(captor.getValue().getChatMessage()).isEqualTo(chatMessage);
-        assertThat(captor.getValue().getAttachments(0).getFileId()).isEqualTo("6acc66675f99715e286f0f6e");
-        assertThat(captor.getValue().getAttachments(0).getName()).isEqualTo("사진.png");
-        assertThat(captor.getValue().getAttachments(0).getSize()).isEqualTo(10L);
+        assertThat(captor.getValue()).isEqualTo(new ChatMessageDelivery("message-1", chatMessage, List.of(5L),
+            List.of(new ChatMessageDelivery.Attachment("6acc66675f99715e286f0f6e", "사진.png", "image/png", 10L))));
+    }
+
+    @Test
+    @DisplayName("success case : 이름 / 형식이 없는 첨부는 빈 문자열, 누른 사람 목록이 없는 리액션은 빈 목록으로 보낸다 (null 을 보내지 않는다)")
+    void 이름_형식이_없는_첨부는_빈_문자열_누른_사람_목록이_없는_리액션은_빈_목록으로_보낸다() {
+        // arrange
+        givenLocations(List.of("5"), "ws://" + SERVER_1);
+
+        // act
+        ChatReceivers receivers = chatMessageDeliveryService.locate(List.of(5L));
+        chatMessageDeliveryService.deliver("message-1", chatMessage,
+            List.of(new Attachment("6acc66675f99715e286f0f6e", null, null, 10L)), receivers);
+        chatMessageDeliveryService.deliverReaction(7L, "message-1", List.of(new Reaction("👍", null)), List.of(5L));
+
+        // assert
+        ArgumentCaptor<ChatMessageDelivery> message = ArgumentCaptor.forClass(ChatMessageDelivery.class);
+        verify(chatServerClient).deliver(eq(CHAT_SERVER_1), message.capture());
+        assertThat(message.getValue().attachments()).containsExactly(new ChatMessageDelivery.Attachment("6acc66675f99715e286f0f6e", "", "", 10L));
+        ArgumentCaptor<ChatReactionDelivery> reaction = ArgumentCaptor.forClass(ChatReactionDelivery.class);
+        verify(chatServerClient).deliverReaction(eq(CHAT_SERVER_1), reaction.capture());
+        assertThat(reaction.getValue().reactions()).containsExactly(new ChatReactionDelivery.Reaction("👍", List.of()));
     }
 
     @Test
@@ -307,9 +324,10 @@ class ChatMessageDeliveryServiceUnitTest {
         // assert
         ArgumentCaptor<ChatReactionDelivery> captor = ArgumentCaptor.forClass(ChatReactionDelivery.class);
         verify(chatServerClient).deliverReaction(eq(CHAT_SERVER_1), captor.capture());
-        assertThat(captor.getValue().getChannelId()).isEqualTo(7L);
-        assertThat(captor.getValue().getReceiveUserIdsList()).containsExactly(5L, 17L);
-        assertThat(captor.getValue().getReactions(0).getUserIdsList()).containsExactly(5L, 17L);
+        assertThat(captor.getValue().channelId()).isEqualTo(7L);
+        assertThat(captor.getValue().messageId()).isEqualTo("message-1");
+        assertThat(captor.getValue().receiveUserIds()).containsExactly(5L, 17L);
+        assertThat(captor.getValue().reactions()).containsExactly(new ChatReactionDelivery.Reaction("👍", List.of(5L, 17L)));
         assertThat(exception.getFailedChatServers()).containsExactly(SERVER_2);
     }
 
@@ -350,13 +368,13 @@ class ChatMessageDeliveryServiceUnitTest {
     private List<Integer> deliveredChunkSizes(URI chatServerUri) {
         ArgumentCaptor<ChatMessageDelivery> captor = ArgumentCaptor.forClass(ChatMessageDelivery.class);
         verify(chatServerClient, org.mockito.Mockito.atLeastOnce()).deliver(eq(chatServerUri), captor.capture());
-        return captor.getAllValues().stream().map(ChatMessageDelivery::getReceiveUserIdsCount).toList();
+        return captor.getAllValues().stream().map(delivery -> delivery.receiveUserIds().size()).toList();
     }
 
     private void assertDelivered(URI chatServerUri, List<List<Long>> receiverChunks) {
         ArgumentCaptor<ChatMessageDelivery> captor = ArgumentCaptor.forClass(ChatMessageDelivery.class);
         verify(chatServerClient, times(receiverChunks.size())).deliver(eq(chatServerUri), captor.capture());
-        assertThat(captor.getAllValues()).extracting(ChatMessageDelivery::getReceiveUserIdsList)
+        assertThat(captor.getAllValues()).extracting(ChatMessageDelivery::receiveUserIds)
             .containsExactlyElementsOf(receiverChunks);
     }
 }

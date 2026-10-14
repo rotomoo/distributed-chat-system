@@ -11,6 +11,10 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.distributed.chat.system.common.event.ChatMessageEvent;
+import com.distributed.chat.system.common.event.ChatReactionEvent;
+import com.distributed.chat.system.common.event.EventJson;
+import com.distributed.chat.system.common.event.MalformedEventException;
 import com.distributed.chat.system.kafka.consumer.base.kafka.DeadLetterHandler;
 import com.distributed.chat.system.kafka.consumer.service.ChatMessageDeliveryService;
 import com.distributed.chat.system.kafka.consumer.service.ChatNotificationPublisher;
@@ -20,6 +24,9 @@ import com.distributed.chat.system.mongodb.repository.ChatMessageRepository;
 import com.distributed.chat.system.mysql.repository.ChannelUserRepository;
 import com.distributed.chat.system.mongodb.repository.ChatMessageSaveRepositoryImpl;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,7 +34,6 @@ import java.util.Map;
 import java.util.UUID;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,9 +52,9 @@ import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.test.EmbeddedKafkaBroker;
 import org.springframework.kafka.test.context.EmbeddedKafka;
+import org.springframework.kafka.retrytopic.RetryTopicHeaders;
+import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.kafka.test.utils.KafkaTestUtils;
-import protobuf.EdaChatMessage.ChatMessage;
-import protobuf.EdaChatMessage.ChatReaction;
 
 /**
  * Kafka 는 테스트 안에 띄운 진짜 브로커, MongoDB 는 로컬 스택(다른 모듈 통합 테스트와 같음), 채팅 서버 전달만 목.
@@ -104,7 +110,7 @@ class EventConsumerRetryIntegrationTest {
     @MockBean
     private ChannelUserRepository channelUserRepository;
 
-    private KafkaTemplate<String, byte[]> kafkaTemplate;
+    private KafkaTemplate<String, String> kafkaTemplate;
     private final List<String> eventIds = new ArrayList<>();
 
     @BeforeEach
@@ -114,7 +120,7 @@ class EventConsumerRetryIntegrationTest {
         org.mockito.Mockito.when(chatMessageDeliveryService.locate(any())).thenReturn(new ChatReceivers(Map.of("10.0.0.1:1111", List.of(5L)), List.of(1L)));
         Map<String, Object> props = KafkaTestUtils.producerProps(embeddedKafkaBroker);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         kafkaTemplate = new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(props));
     }
 
@@ -158,6 +164,7 @@ class EventConsumerRetryIntegrationTest {
 
         // then
         assertThat(dltOutcome(eventId)).isEqualTo(DeadLetterHandler.Outcome.DEAD_LETTER);
+        assertThat(attempts(dltRecord(eventId))).isEqualTo(5);
         assertThat(documents(eventId)).isZero();
         verify(chatMessageRepository, times(4)).saveOnce(argThat(message -> message != null && eventId.equals(message.getEventId())));
         verify(chatMessageDeliveryService, times(0)).deliver(anyString(), withEventId(eventId), any(), any());
@@ -236,17 +243,47 @@ class EventConsumerRetryIntegrationTest {
             .when(chatMessageDeliveryService).deliverReaction(eq(7L), eq(messageId), any(), any());
 
         // when
-        kafkaTemplate.send("chat-reaction", "7", ChatReaction.newBuilder().setSendUserId(5L).setChannelId(7L)
-            .setMessageId(messageId).setEmoji("👍").setAction(ChatReaction.Action.ADD).build().toByteArray()).join();
+        kafkaTemplate.send("chat-reaction", "7", EventJson.write(new ChatReactionEvent(5L, 7L, messageId, "👍",
+            ChatReactionEvent.Action.ADD, 0L))).join();
 
         // then
-        ArgumentCaptor<ConsumerRecord<String, byte[]>> dlt = dltRecords();
-        ConsumerRecord<String, byte[]> record = dlt.getAllValues().stream()
-            .filter(candidate -> candidate.topic().equals("chat-reaction-dlt")).findFirst().orElseThrow();
+        await().atMost(WAIT).until(() -> dltRecords().getAllValues().stream().anyMatch(candidate -> isReactionTo(candidate, messageId)));
+        ConsumerRecord<String, String> record = dltRecords().getAllValues().stream()
+            .filter(candidate -> isReactionTo(candidate, messageId)).findFirst().orElseThrow();
         assertThat(deadLetterHandler.classify(record)).isEqualTo(DeadLetterHandler.Outcome.DELIVERY_DROPPED);
         verify(chatMessageDeliveryService, times(4)).deliverReaction(eq(7L), eq(messageId), any(), any());
         assertThat(chatMessageRepository.findById(target.getId()).orElseThrow().getReactions())
             .containsExactly(new com.distributed.chat.system.mongodb.collection.ChatMessage.Reaction("👍", List.of(5L)));
+    }
+
+    @Test
+    @DisplayName("fail case : 이벤트로 읽을 수 없는 메시지 / 리액션(깨진 JSON, 예전 바이너리 값)은 재시도 없이 바로 DLT 로 가서 malformed 로 분류되고 다음 레코드는 그대로 처리된다")
+    void 이벤트로_읽을_수_없는_값은_재시도_없이_바로_DLT_로_가서_malformed_로_분류된다() {
+        // given
+        String brokenKey = "broken-" + UUID.randomUUID();
+        String binaryKey = "binary-" + UUID.randomUUID();
+        String reactionKey = "reaction-" + UUID.randomUUID();
+        String oldBinary = new String(new byte[]{0x08, 0x05, 0x10, 0x07, 0x1a, 0x02, 'h', 'i'}, StandardCharsets.UTF_8);
+        String eventId = newEventId();
+
+        // when : 읽을 수 없는 값 뒤에 정상 메시지
+        kafkaTemplate.send("chat-send-message", brokenKey, "{\"channelId\":").join();
+        kafkaTemplate.send("chat-send-message", binaryKey, oldBinary).join();
+        kafkaTemplate.send("chat-reaction", reactionKey, "not json").join();
+        publish(eventId, "뒤의 정상 메시지");
+
+        // then
+        await().atMost(WAIT).untilAsserted(() -> verify(chatMessageDeliveryService).deliver(anyString(), withEventId(eventId), any(), any()));
+        for (String key : List.of(brokenKey, binaryKey, reactionKey)) {
+            ConsumerRecord<String, String> record = dltRecordByKey(key);
+            assertThat(record.topic()).endsWith("-dlt");
+            assertThat(deadLetterHandler.classify(record)).isEqualTo(DeadLetterHandler.Outcome.MALFORMED);
+            // 원래 토픽에서 1번 실패하고 바로 DLT (재시도 토픽을 거쳤으면 5)
+            assertThat(attempts(record)).as(key).isEqualTo(2);
+            assertThat(header(record, KafkaHeaders.EXCEPTION_FQCN) + header(record, KafkaHeaders.EXCEPTION_CAUSE_FQCN))
+                .contains(MalformedEventException.class.getName());
+        }
+        assertThat(documents(eventId)).isEqualTo(1);
     }
 
     @Test
@@ -261,37 +298,70 @@ class EventConsumerRetryIntegrationTest {
      * DLT 핸들러가 받은 그 eventId 레코드 (DLT 토픽에서 왔는지 확인) 의 분류
      */
     private DeadLetterHandler.Outcome dltOutcome(String eventId) {
-        ArgumentCaptor<ConsumerRecord<String, byte[]>> dlt = dltRecords();
-        ConsumerRecord<String, byte[]> record = dlt.getAllValues().stream()
-            .filter(candidate -> eventId.equals(parse(candidate).getEventId()))
-            .findFirst().orElseThrow();
+        ConsumerRecord<String, String> record = dltRecord(eventId);
         assertThat(record.topic()).isEqualTo("chat-send-message-dlt");
         return deadLetterHandler.classify(record);
     }
 
+    /**
+     * DLT 핸들러가 받은 그 eventId 레코드
+     */
+    private ConsumerRecord<String, String> dltRecord(String eventId) {
+        return dltRecords().getAllValues().stream()
+            .filter(candidate -> eventId.equals(parse(candidate).eventId()))
+            .findFirst().orElseThrow();
+    }
+
+    /**
+     * DLT 핸들러가 받은 그 key 의 레코드 (나타날 때까지 기다린다)
+     */
+    private ConsumerRecord<String, String> dltRecordByKey(String key) {
+        await().atMost(WAIT).until(() -> dltRecords().getAllValues().stream().anyMatch(candidate -> key.equals(candidate.key())));
+        return dltRecords().getAllValues().stream().filter(candidate -> key.equals(candidate.key())).findFirst().orElseThrow();
+    }
+
     @SuppressWarnings("unchecked")
-    private ArgumentCaptor<ConsumerRecord<String, byte[]>> dltRecords() {
-        ArgumentCaptor<ConsumerRecord<String, byte[]>> captor = ArgumentCaptor.forClass(ConsumerRecord.class);
+    private ArgumentCaptor<ConsumerRecord<String, String>> dltRecords() {
+        ArgumentCaptor<ConsumerRecord<String, String>> captor = ArgumentCaptor.forClass(ConsumerRecord.class);
         await().atMost(WAIT).untilAsserted(() -> verify(deadLetterHandler, atLeast(1)).handle(captor.capture()));
         return captor;
     }
 
-    private static ChatMessage parse(ConsumerRecord<String, byte[]> record) {
+    /**
+     * 재시도 토픽이 레코드에 붙이는 시도 수 (원래 토픽 1번 실패 → DLT 면 2)
+     */
+    private static int attempts(ConsumerRecord<String, String> record) {
+        byte[] value = record.headers().lastHeader(RetryTopicHeaders.DEFAULT_HEADER_ATTEMPTS).value();
+        return value.length == Integer.BYTES ? ByteBuffer.wrap(value).getInt() : new BigInteger(value).intValue();
+    }
+
+    private static String header(ConsumerRecord<String, String> record, String name) {
+        org.apache.kafka.common.header.Header header = record.headers().lastHeader(name);
+        return header == null ? "" : new String(header.value(), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 이 메시지에 대한 리액션 DLT 레코드인지 (다른 테스트가 보낸 리액션 / 읽을 수 없는 값과 섞이지 않게)
+     */
+    private static boolean isReactionTo(ConsumerRecord<String, String> record, String messageId) {
+        return record.topic().equals("chat-reaction-dlt") && record.value() != null && record.value().contains(messageId);
+    }
+
+    private static ChatMessageEvent parse(ConsumerRecord<String, String> record) {
         try {
-            return ChatMessage.parseFrom(record.value());
-        } catch (Exception e) {
-            return ChatMessage.getDefaultInstance();
+            return EventJson.read(record.value(), ChatMessageEvent.class);
+        } catch (MalformedEventException e) {
+            return ChatMessageEvent.empty();
         }
     }
 
-    private ChatMessage withEventId(String eventId) {
-        return argThat(message -> message != null && eventId.equals(message.getEventId()));
+    private ChatMessageEvent withEventId(String eventId) {
+        return argThat(message -> message != null && eventId.equals(message.eventId()));
     }
 
     private void publish(String eventId, String text) {
-        ChatMessage chatMessage = ChatMessage.newBuilder().setEventId(eventId).setSendUserId(5L).setChannelId(7L)
-            .setMessage(text).setPublishDt(System.currentTimeMillis()).build();
-        kafkaTemplate.send("chat-send-message", "7", chatMessage.toByteArray()).join();
+        ChatMessageEvent chatMessage = new ChatMessageEvent(eventId, 5L, 7L, text, System.currentTimeMillis(), List.of());
+        kafkaTemplate.send("chat-send-message", "7", EventJson.write(chatMessage)).join();
     }
 
     private long documents(String eventId) {

@@ -1,16 +1,17 @@
 package com.distributed.chat.system.notification.consumer;
 
+import com.distributed.chat.system.common.event.ChatNotificationEvent;
+import com.distributed.chat.system.common.event.EventJson;
 import com.distributed.chat.system.common.kafka.ChatNotificationTopic;
 import com.distributed.chat.system.notification.service.NotificationService;
-import com.google.protobuf.InvalidProtocolBufferException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
-import protobuf.EdaChatMessage.ChatNotification;
 
 /**
- * kafka-consumer 가 발행한 오프라인 멤버 알림 (key = channelId). 조회 실패는 예외 → 재시도 토픽 (NotificationRetryTopicConfig)
+ * kafka-consumer 가 발행한 오프라인 멤버 알림 (key = channelId, 값 = 이벤트 JSON). 조회 실패는 예외 → 재시도 토픽 (NotificationRetryTopicConfig).
+ * 읽을 수 없는 값은 {@link com.distributed.chat.system.common.event.MalformedEventException} → 재시도 없이 바로 DLT (로그만 남고 버려진다)
  */
 @Component
 @Slf4j
@@ -22,15 +23,7 @@ public class ChatNotificationConsumer {
     private final NotificationService notificationService;
 
     @KafkaListener(topics = ChatNotificationTopic.TOPIC, groupId = GROUP_ID)
-    public void consume(byte[] payload) {
-        ChatNotification notification;
-        try {
-            notification = ChatNotification.parseFrom(payload);
-        } catch (InvalidProtocolBufferException e) {
-            // 재시도해도 파싱되지 않으므로 버린다
-            log.error("[chat-notification] invalid payload : {}", e.getMessage());
-            return;
-        }
-        notificationService.notify(notification);
+    public void consume(String payload) {
+        notificationService.notify(EventJson.read(payload, ChatNotificationEvent.class));
     }
 }

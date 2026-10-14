@@ -1,8 +1,8 @@
 package com.distributed.chat.system.notification.service;
 
+import com.distributed.chat.system.common.event.ChatNotificationEvent;
 import com.distributed.chat.system.mysql.entity.Channel;
 import com.distributed.chat.system.mysql.enums.ChannelType;
-import protobuf.EdaChatMessage.ChatNotification;
 
 /**
  * 서비스 워커가 받는 푸시 본문 (JSON). 서비스 워커는 이걸로 showNotification(title, {body, tag, data: {url}}) 한다
@@ -16,7 +16,7 @@ public record WebPushPayload(String title, String body, String url, String tag) 
 
     static final String UNKNOWN_SENDER = "알 수 없는 사용자";
 
-    public static WebPushPayload of(Channel channel, String senderName, ChatNotification notification) {
+    public static WebPushPayload of(Channel channel, String senderName, ChatNotificationEvent notification) {
         String sender = senderName == null || senderName.isBlank() ? UNKNOWN_SENDER : senderName;
         String title = channel.getChannelType() == ChannelType.DM ? sender : "#" + channel.getChannelName();
         return new WebPushPayload(title, sender + ": " + summary(notification), "/?channel=" + channel.getId(), tag(channel.getId()));
@@ -29,12 +29,12 @@ public record WebPushPayload(String title, String body, String url, String tag) 
         return "channel-" + channelId;
     }
 
-    private static String summary(ChatNotification notification) {
-        if (!notification.getPreview().isBlank()) {
-            return notification.getPreview();
+    private static String summary(ChatNotificationEvent notification) {
+        if (!notification.preview().isBlank()) {
+            return notification.preview();
         }
-        if (notification.getAttachmentCount() > 0) {
-            return "파일 " + notification.getAttachmentCount() + "개";
+        if (notification.attachmentCount() > 0) {
+            return "파일 " + notification.attachmentCount() + "개";
         }
         return "새 메시지";
     }

@@ -54,7 +54,7 @@ public class LoggingInterceptor implements HandlerInterceptor {
             .stream()
             .map(entry -> entry.getKey() + "=" + String.join(",", entry.getValue()))
             .collect(Collectors.joining(", "));
-        // JSON 이 아닌 바디(protobuf 등 바이너리)는 파싱하지 않고 크기만 남긴다
+        // JSON 이 아닌 바디(바이너리 등)는 파싱하지 않고 크기만 남긴다
         // 본문은 LoggingFilter 가 복사해 둔 것만 쓴다. 필터가 건너뛴 요청(multipart, skip-body-paths)의 원래 스트림은 건드리지 않는다
         // (여기서 읽어 버리면 그 뒤의 컨트롤러가 본문을 읽지 못한다)
         String contentType = request.getContentType();

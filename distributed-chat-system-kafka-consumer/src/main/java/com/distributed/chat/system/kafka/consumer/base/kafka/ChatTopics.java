@@ -1,8 +1,10 @@
 package com.distributed.chat.system.kafka.consumer.base.kafka;
 
+import com.distributed.chat.system.common.event.ChatMessageEvent;
+import com.distributed.chat.system.common.event.EventJson;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
-import protobuf.EdaChatMessage.ChatMessage;
 
 /**
  * 컨슈머가 읽는 토픽과 이벤트 식별
@@ -17,12 +19,13 @@ public final class ChatTopics {
     }
 
     /**
-     * 메시지 이벤트 ID. 예전 채팅 서버(event_id 없음)가 보낸 것은 본문으로 만든 고정 UUID 를 쓴다 (재시도해도 같은 값)
+     * 메시지 이벤트 ID. 채팅 서버는 항상 넣지만, 빠진 이벤트(손으로 다시 발행한 JSON 등)는 이벤트 JSON 으로 만든 고정 UUID 를 쓴다.
+     * 같은 이벤트면 재시도 / DLT 재발행에도 같은 값이라 한 번만 저장되고, 서로 다른 이벤트가 빈 eventId 하나로 합쳐지지 않는다
      */
-    public static String eventIdOf(ChatMessage chatMessage) {
-        return chatMessage.getEventId().isBlank()
-            ? UUID.nameUUIDFromBytes(chatMessage.toByteArray()).toString()
-            : chatMessage.getEventId();
+    public static String eventIdOf(ChatMessageEvent chatMessage) {
+        return chatMessage.eventId().isBlank()
+            ? UUID.nameUUIDFromBytes(EventJson.write(chatMessage).getBytes(StandardCharsets.UTF_8)).toString()
+            : chatMessage.eventId();
     }
 
     /**

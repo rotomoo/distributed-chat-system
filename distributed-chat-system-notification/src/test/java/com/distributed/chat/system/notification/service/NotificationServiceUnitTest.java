@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.distributed.chat.system.common.event.ChatNotificationEvent;
 import com.distributed.chat.system.mysql.entity.Channel;
 import com.distributed.chat.system.mysql.entity.User;
 import com.distributed.chat.system.mysql.entity.WebPushSubscription;
@@ -37,7 +38,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import protobuf.EdaChatMessage.ChatNotification;
 
 @DisplayName("[단위] NotificationService 테스트")
 @ExtendWith(MockitoExtension.class)
@@ -340,9 +340,8 @@ class NotificationServiceUnitTest {
         when(channelUserRepository.findUnmutedMemberUserIds(CHANNEL_ID, receivers)).thenReturn(unmuted);
     }
 
-    private static ChatNotification notification(List<Long> receivers, String preview, int attachments) {
-        return ChatNotification.newBuilder().setMessageId("6acc66675f99715e286f0f70").setChannelId(CHANNEL_ID).setSenderId(SENDER)
-            .setPreview(preview).setAttachmentCount(attachments).setPublishDt(1L).addAllReceiverUserIds(receivers).build();
+    private static ChatNotificationEvent notification(List<Long> receivers, String preview, int attachments) {
+        return new ChatNotificationEvent("6acc66675f99715e286f0f70", CHANNEL_ID, SENDER, preview, attachments, 1L, receivers);
     }
 
     private static WebPushSubscription subscription(Long userId, String endpoint) {

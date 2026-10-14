@@ -1,15 +1,18 @@
 package com.distributed.chat.system.kafka.consumer.consumer;
 
+import com.distributed.chat.system.common.event.ChatMessageEvent;
+import com.distributed.chat.system.common.event.ChatReactionEvent;
+import com.distributed.chat.system.common.event.EventJson;
 import com.distributed.chat.system.kafka.consumer.base.kafka.ChatTopics;
 import com.distributed.chat.system.kafka.consumer.service.ChatAttachmentResolver;
 import com.distributed.chat.system.kafka.consumer.service.ChatMessageDeliveryService;
 import com.distributed.chat.system.kafka.consumer.service.ChatNotificationPublisher;
 import com.distributed.chat.system.kafka.consumer.service.ChatReceivers;
+import com.distributed.chat.system.mongodb.collection.ChatMessage;
 import com.distributed.chat.system.mongodb.collection.ChatMessage.Attachment;
 import com.distributed.chat.system.mongodb.collection.ChatMessage.Reaction;
 import com.distributed.chat.system.mongodb.repository.ChatMessageRepository;
 import com.distributed.chat.system.mysql.repository.ChannelUserRepository;
-import com.google.protobuf.InvalidProtocolBufferException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -19,14 +22,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.bson.types.ObjectId;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
-import protobuf.EdaChatMessage.ChatMessage;
-import protobuf.EdaChatMessage.ChatReaction;
 
 /**
  * 보낸 사람이 채널 멤버인지는 여기서 한 번만 확인한다 (원본 MySQL channel_user, 멤버 목록은 전달에도 그대로 쓴다).
  * 저장 / 전달 실패는 예외로 던진다 → 재시도 토픽으로 넘어가 나중에 다시 처리된다 (KafkaRetryTopicConfig).
  * 같은 레코드를 여러 번 처리해도 결과가 같다 : 메시지는 eventId 로 한 번만 저장, 리액션은 $addToSet / $pull.
  * 오프라인 멤버 알림(chat-notification)은 메시지가 처음 저장될 때 한 번만 발행한다 (재시도 / 중복 발행 / DLT 재발행으로 알림이 다시 가지 않게)
+ * <p>
+ * 값은 이벤트 JSON 문자열 ({@link EventJson}). 읽을 수 없으면 {@link com.distributed.chat.system.common.event.MalformedEventException}
+ * → 재시도하지 않고 바로 DLT (KafkaRetryTopicConfig, 다시 읽어도 같다). 읽히지만 값이 틀린 이벤트(멤버 아님, 모르는 action 등)는 로그만 남기고 버린다
  */
 @Component
 @Slf4j
@@ -40,47 +44,40 @@ public class EventConsumer {
     private final ChatNotificationPublisher chatNotificationPublisher;
 
     @KafkaListener(topics = ChatTopics.CHAT_SEND_MESSAGE, groupId = "chat-group-1")
-    public void consumeChatSendMessage(byte[] payload) {
-        ChatMessage chatMessage;
-        try {
-            chatMessage = ChatMessage.parseFrom(payload);
-        } catch (InvalidProtocolBufferException e) {
-            // 재시도해도 파싱되지 않는 메시지이므로 버린다
-            log.error("[chat-send-message] invalid payload : {}", e.getMessage());
-            return;
-        }
+    public void consumeChatSendMessage(String payload) {
+        ChatMessageEvent chatMessage = EventJson.read(payload, ChatMessageEvent.class);
         String eventId = ChatTopics.eventIdOf(chatMessage);
         log.info("[chat-send-message] consumed: eventId={}, sendUserId={}, channelId={}",
-            eventId, chatMessage.getSendUserId(), chatMessage.getChannelId());
+            eventId, chatMessage.sendUserId(), chatMessage.channelId());
 
         // 0. 채널 멤버 (원본 MySQL channel_user). 보낸 사람이 멤버가 아니면 버린다 (채팅 서버는 형식만 본다)
-        List<Long> memberIds = channelUserRepository.findMemberUserIds(chatMessage.getChannelId());
-        if (!memberIds.contains(chatMessage.getSendUserId())) {
+        List<Long> memberIds = channelUserRepository.findMemberUserIds(chatMessage.channelId());
+        if (!memberIds.contains(chatMessage.sendUserId())) {
             log.warn("[chat-send-message] not a channel member, dropped: sendUserId={}, channelId={}",
-                chatMessage.getSendUserId(), chatMessage.getChannelId());
+                chatMessage.sendUserId(), chatMessage.channelId());
             return;
         }
 
         // 1. 첨부파일 확인 (GridFS metadata). 남의 파일 / 다른 채널 파일은 버린다
         List<Attachment> attachments = chatAttachmentResolver.resolve(chatMessage);
-        if (chatMessage.getMessage().isBlank() && attachments.isEmpty()) {
+        if (chatMessage.message().isBlank() && attachments.isEmpty()) {
             // 첨부만 보냈는데 전부 버려졌으면 남는 게 없다
             log.warn("[chat-send-message] empty message dropped: sendUserId={}, channelId={}",
-                chatMessage.getSendUserId(), chatMessage.getChannelId());
+                chatMessage.sendUserId(), chatMessage.channelId());
             return;
         }
 
         // 2. 이력 저장 (eventId 로 한 번만. 재시도 / 중복 발행이면 처음 저장된 문서를 그대로 받는다)
         //    MongoDB Date 는 밀리초까지라 미리 잘라 두면 돌아온 createDt 가 같을 때 = 이번에 처음 저장한 것
         Instant createDt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        com.distributed.chat.system.mongodb.collection.ChatMessage saved = chatMessageRepository.saveOnce(
-            com.distributed.chat.system.mongodb.collection.ChatMessage.builder()
+        ChatMessage saved = chatMessageRepository.saveOnce(
+            ChatMessage.builder()
                 .eventId(eventId)
-                .channelId(chatMessage.getChannelId())
-                .content(chatMessage.getMessage())
-                .eventPublishDt(Instant.ofEpochMilli(chatMessage.getPublishDt()))
+                .channelId(chatMessage.channelId())
+                .content(chatMessage.message())
+                .eventPublishDt(Instant.ofEpochMilli(chatMessage.publishDt()))
                 .createDt(createDt)
-                .createUserId(chatMessage.getSendUserId())
+                .createUserId(chatMessage.sendUserId())
                 .attachments(attachments.isEmpty() ? null : attachments)
                 .build());
 
@@ -104,39 +101,34 @@ public class EventConsumer {
      * $addToSet / $pull 이라 같은 이벤트를 다시 처리해도 결과가 같아서 메시지처럼 eventId 가 필요 없다
      */
     @KafkaListener(topics = ChatTopics.CHAT_REACTION, groupId = "chat-group-1")
-    public void consumeChatReaction(byte[] payload) {
-        ChatReaction chatReaction;
-        try {
-            chatReaction = ChatReaction.parseFrom(payload);
-        } catch (InvalidProtocolBufferException e) {
-            log.error("[chat-reaction] invalid payload : {}", e.getMessage());
+    public void consumeChatReaction(String payload) {
+        ChatReactionEvent chatReaction = EventJson.read(payload, ChatReactionEvent.class);
+        if (!ObjectId.isValid(chatReaction.messageId()) || chatReaction.emoji().isBlank()) {
+            log.warn("[chat-reaction] invalid reaction dropped: messageId={}", chatReaction.messageId());
             return;
         }
-        if (!ObjectId.isValid(chatReaction.getMessageId()) || chatReaction.getEmoji().isBlank()) {
-            log.warn("[chat-reaction] invalid reaction dropped: messageId={}", chatReaction.getMessageId());
+        if (chatReaction.action() == null) {
+            // 없거나 이 컨슈머가 모르는 action (새 채팅 서버가 더한 값 등)
+            log.warn("[chat-reaction] unknown action dropped: messageId={}", chatReaction.messageId());
             return;
         }
 
-        List<Long> memberIds = channelUserRepository.findMemberUserIds(chatReaction.getChannelId());
-        if (!memberIds.contains(chatReaction.getSendUserId())) {
+        List<Long> memberIds = channelUserRepository.findMemberUserIds(chatReaction.channelId());
+        if (!memberIds.contains(chatReaction.sendUserId())) {
             log.warn("[chat-reaction] not a channel member, dropped: sendUserId={}, channelId={}",
-                chatReaction.getSendUserId(), chatReaction.getChannelId());
+                chatReaction.sendUserId(), chatReaction.channelId());
             return;
         }
 
-        ObjectId messageId = new ObjectId(chatReaction.getMessageId());
-        Optional<List<Reaction>> reactions = switch (chatReaction.getAction()) {
+        ObjectId messageId = new ObjectId(chatReaction.messageId());
+        Optional<List<Reaction>> reactions = switch (chatReaction.action()) {
             case ADD -> chatMessageRepository.addReaction(
-                messageId, chatReaction.getChannelId(), chatReaction.getEmoji(), chatReaction.getSendUserId());
+                messageId, chatReaction.channelId(), chatReaction.emoji(), chatReaction.sendUserId());
             case REMOVE -> chatMessageRepository.removeReaction(
-                messageId, chatReaction.getChannelId(), chatReaction.getEmoji(), chatReaction.getSendUserId());
-            default -> {
-                log.warn("[chat-reaction] unknown action dropped: {}", chatReaction.getAction());
-                yield Optional.empty();
-            }
+                messageId, chatReaction.channelId(), chatReaction.emoji(), chatReaction.sendUserId());
         };
         // 메시지가 없거나 다른 채널의 메시지면 버린다 (실패하면 예외 → 재시도 토픽)
         reactions.ifPresent(current -> chatMessageDeliveryService.deliverReaction(
-            chatReaction.getChannelId(), messageId.toHexString(), current, memberIds));
+            chatReaction.channelId(), messageId.toHexString(), current, memberIds));
     }
 }
