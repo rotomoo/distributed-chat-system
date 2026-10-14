@@ -123,8 +123,8 @@ class ChatHeartbeatIntegrationTest {
     }
 
     @Test
-    @DisplayName("success case : 로그인 없이 /actuator/prometheus 에서 채팅 서버 메트릭(열린 소켓, 보낸 프레임)을 볼 수 있다")
-    void 로그인_없이_actuator_prometheus_에서_채팅_서버_메트릭을_볼_수_있다() throws Exception {
+    @DisplayName("success case : 로그인 없이 /actuator/prometheus 에서 기본 메트릭(JVM, 톰캣)을 볼 수 있다")
+    void 로그인_없이_actuator_prometheus_에서_기본_메트릭을_볼_수_있다() throws Exception {
         // given : 소켓 하나가 ping 을 받는 중
         RecordingClient ponging = new RecordingClient(true);
         connect(ponging);
@@ -137,7 +137,7 @@ class ChatHeartbeatIntegrationTest {
 
         // then
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(response.body()).contains("chat_websocket_sessions", "chat_frames_sent_total", "chat_heartbeat_timeouts_total");
+        assertThat(response.body()).contains("jvm_memory_used_bytes", "tomcat_sessions", "application=\"chatting\"");
     }
 
     @SuppressWarnings("unchecked")

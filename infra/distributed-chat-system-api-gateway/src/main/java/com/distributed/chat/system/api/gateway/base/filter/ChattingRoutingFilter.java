@@ -1,11 +1,13 @@
 package com.distributed.chat.system.api.gateway.base.filter;
 
 import com.distributed.chat.system.common.redis.ChatPresenceKeys;
+import com.distributed.chat.system.common.redis.ChatServers;
 import com.distributed.chat.system.common.exception.ApiException;
 import com.distributed.chat.system.common.exception.ErrorCode;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
 import org.springframework.cloud.gateway.route.Route;
@@ -23,6 +25,7 @@ import reactor.core.publisher.Mono;
 public class ChattingRoutingFilter extends AbstractGatewayFilterFactory<Object> {
 
     private final RedisTemplate redisTemplate;
+    private final DiscoveryClient discoveryClient;
 
     @Override
     public GatewayFilter apply(Object object) {
@@ -43,6 +46,12 @@ public class ChattingRoutingFilter extends AbstractGatewayFilterFactory<Object> 
                 redisTemplate.opsForValue().get(ChatPresenceKeys.userKey(userId))).orElse(null);
 
             log.info("userId : {}, chatServerUri : {}", userId, chatServerUri);
+
+            // 이미 접속한 서버가 살아 있을 때만 그 서버로 (유저 하나 = 서버 하나). 죽은 서버를 가리키면 로드밸런서에 맡긴다
+            if (chatServerUri != null && !ChatServers.alive(discoveryClient).contains(ChatPresenceKeys.chatServerOf(chatServerUri))) {
+                log.info("userId : {}, chatServerUri : {} is dead, fall back to load balancer", userId, chatServerUri);
+                chatServerUri = null;
+            }
 
             if (chatServerUri != null) {
                 Route route = Route.async()

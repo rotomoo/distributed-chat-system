@@ -7,6 +7,7 @@ spring:
     include:
       - common
       - mongodb
+      - mysql
       - kafka-consumer
 
   output:
@@ -15,11 +16,14 @@ spring:
 
 
 # 재시도 토픽 대기 (ms). 시도 수 = 대기 수 + 1, 그 뒤 DLT (KafkaRetryTopicConfig)
+# delivery.parallelism : 여러 채팅 서버로 동시에 보내는 스레드 수 (ChatMessageDeliveryService)
 chat:
   kafka:
     retry:
       delays-ms: 1000,5000,30000
       topic-partitions: 3
+  delivery:
+    parallelism: 8
 
 # 메트릭 : /actuator/health, /actuator/prometheus (api-gateway 는 /v1/**, /websocket/** 만 라우팅하므로 밖으로 노출되지 않는다)
 management:

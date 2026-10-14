@@ -9,7 +9,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.distributed.chat.system.client.api.base.cache.ChannelMemberCache;
 import com.distributed.chat.system.client.api.web.dto.channel.ChannelDto;
 import com.distributed.chat.system.client.api.web.dto.channel.CreateChannelRequestDto;
 import com.distributed.chat.system.client.api.web.dto.channel.DmDto;
@@ -59,9 +58,6 @@ class ChannelServiceUnitTest {
 
     @Mock
     private UserRepository userRepository;
-
-    @Mock
-    private ChannelMemberCache channelMemberCache;
 
     @Mock
     private ChannelMessageService channelMessageService;
@@ -140,8 +136,8 @@ class ChannelServiceUnitTest {
     }
 
     @Test
-    @DisplayName("success case : 채널을 만들면 만든 사람이 참여하고 Redis 멤버 캐시에도 들어간다")
-    void 채널을_만들면_만든_사람이_참여하고_Redis_멤버_캐시에도_들어간다() {
+    @DisplayName("success case : 채널을 만들면 만든 사람이 참여한다 (멤버는 MySQL channel_user 에만)")
+    void 채널을_만들면_만든_사람이_참여한다() {
         // arrange
         givenTeamMember(LOGIN_ID);
         when(channelRepository.existsByTeamIdAndChannelTypeAndChannelNameAndDeleteYnIsFalse(TEAM_ID, ChannelType.PUBLIC, "random"))
@@ -157,7 +153,6 @@ class ChannelServiceUnitTest {
         assertThat(saved.getValue().getChannelName()).isEqualTo("random");
         assertThat(saved.getValue().getChannelType()).isEqualTo(ChannelType.PUBLIC);
         verify(channelUserRepository).save(any(ChannelUser.class));
-        verify(channelMemberCache).add(101L, LOGIN_ID);
     }
 
     @Test
@@ -204,7 +199,6 @@ class ChannelServiceUnitTest {
 
         // assert
         verify(channelUserRepository, never()).save(any(ChannelUser.class));
-        verify(channelMemberCache).add(101L, LOGIN_ID);
     }
 
     @Test
@@ -240,8 +234,6 @@ class ChannelServiceUnitTest {
         assertThat(response.getData().getChannelId()).isEqualTo(200L);
         assertThat(response.getData().getUserName()).isEqualTo("bob");
         verify(channelUserRepository, times(2)).save(any(ChannelUser.class));
-        verify(channelMemberCache).add(200L, LOGIN_ID);
-        verify(channelMemberCache).add(200L, 7L);
     }
 
     @Test

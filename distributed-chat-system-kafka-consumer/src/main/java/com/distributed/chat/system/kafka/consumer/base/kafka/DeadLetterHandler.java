@@ -1,6 +1,5 @@
 package com.distributed.chat.system.kafka.consumer.base.kafka;
 
-import com.distributed.chat.system.kafka.consumer.base.metrics.ConsumerMetrics;
 import com.distributed.chat.system.kafka.consumer.service.DeliveryFailedException;
 import com.distributed.chat.system.mongodb.repository.ChatMessageRepository;
 import com.google.protobuf.InvalidProtocolBufferException;
@@ -18,9 +17,10 @@ import protobuf.EdaChatMessage.ChatReaction;
 /**
  * 재시도를 다 써도 실패한 레코드 (DLT).
  * <ul>
- *   <li>저장은 됐고 전달만 실패 → "전달 버림" 으로 세고 끝 (다시 발행할 필요 없음. 클라이언트가 재접속 / 빈틈 채우기로 받는다)</li>
- *   <li>저장도 못 함 → ERROR 로그 + "dead letter" 로 세고 DLT 에 그대로 둔다 (원인을 고친 뒤 다시 발행, README 모니터링 참고)</li>
+ *   <li>저장은 됐고 전달만 실패 → WARN 로그 (전달 버림. 다시 발행할 필요 없음, 클라이언트가 재접속 / 빈틈 채우기로 받는다)</li>
+ *   <li>저장도 못 함 → ERROR 로그 (dead letter) 를 남기고 DLT 에 그대로 둔다 (원인을 고친 뒤 아래처럼 다시 발행)</li>
  * </ul>
+ * DLT 토픽 / 쌓인 수 / consumer lag 은 kafka-ui 에서 본다
  * 메시지는 eventId 로 저장 여부를 확인한다. 리액션은 저장 결과를 따로 남기지 않으므로 마지막 예외가 전달 실패인지로 판단한다
  * (리액션 갱신은 $addToSet / $pull 이라 다시 해도 결과가 같아 별도 키가 필요 없다)
  * <p>
@@ -47,63 +47,77 @@ public class DeadLetterHandler {
     public static final String BEAN_NAME = "deadLetterHandler";
 
     private final ChatMessageRepository chatMessageRepository;
-    private final ConsumerMetrics consumerMetrics;
+
+    /**
+     * DLT 에서 받은 레코드의 결과
+     */
+    public enum Outcome {
+        /**
+         * 저장 / 반영은 됐고 전달만 못 함 (다시 발행할 필요 없음)
+         */
+        DELIVERY_DROPPED,
+        /**
+         * 저장 / 반영도 못 함 (다시 발행 대상)
+         */
+        DEAD_LETTER
+    }
 
     public void handle(ConsumerRecord<String, byte[]> record) {
-        String originalTopic = ChatTopics.mainTopicOf(header(record, KafkaHeaders.ORIGINAL_TOPIC, record.topic()));
         String reason = header(record, KafkaHeaders.EXCEPTION_MESSAGE, "");
+        Outcome outcome = classify(record);
+        String detail = describe(record);
+        if (outcome == Outcome.DELIVERY_DROPPED) {
+            log.warn("[dlt] delivery dropped (saved, no replay needed) {}, dltTopic : {}, partition : {}, offset : {}, reason : {}",
+                detail, record.topic(), record.partition(), record.offset(), reason);
+            return;
+        }
+        log.error("[dlt] dead letter (NOT saved, replay needed) {}, dltTopic : {}, partition : {}, offset : {}, reason : {}",
+            detail, record.topic(), record.partition(), record.offset(), reason);
+    }
 
+    /**
+     * 메시지는 eventId 로 저장됐는지 확인, 리액션은 마지막 예외가 전달 실패인지로 판단한다
+     */
+    public Outcome classify(ConsumerRecord<String, byte[]> record) {
+        String originalTopic = ChatTopics.mainTopicOf(header(record, KafkaHeaders.ORIGINAL_TOPIC, record.topic()));
         switch (originalTopic) {
-            case ChatTopics.CHAT_SEND_MESSAGE -> handleChatMessage(record, reason);
-            case ChatTopics.CHAT_REACTION -> handleReaction(record, reason);
+            case ChatTopics.CHAT_SEND_MESSAGE -> {
+                try {
+                    String eventId = ChatTopics.eventIdOf(ChatMessage.parseFrom(record.value()));
+                    return chatMessageRepository.findByEventId(eventId).isPresent() ? Outcome.DELIVERY_DROPPED : Outcome.DEAD_LETTER;
+                } catch (InvalidProtocolBufferException e) {
+                    return Outcome.DEAD_LETTER;
+                }
+            }
+            case ChatTopics.CHAT_REACTION -> {
+                return failedOnDelivery(record) ? Outcome.DELIVERY_DROPPED : Outcome.DEAD_LETTER;
+            }
             default -> {
-                consumerMetrics.deadLetter("unknown");
-                log.error("[dlt] unknown topic : {}, offset : {}, reason : {}", record.topic(), record.offset(), reason);
+                return Outcome.DEAD_LETTER;
             }
         }
     }
 
-    private void handleChatMessage(ConsumerRecord<String, byte[]> record, String reason) {
-        ChatMessage chatMessage;
+    /**
+     * 로그용 : 다시 발행할 때 찾을 수 있는 값들
+     */
+    private static String describe(ConsumerRecord<String, byte[]> record) {
+        String originalTopic = ChatTopics.mainTopicOf(header(record, KafkaHeaders.ORIGINAL_TOPIC, record.topic()));
         try {
-            chatMessage = ChatMessage.parseFrom(record.value());
+            if (ChatTopics.CHAT_SEND_MESSAGE.equals(originalTopic)) {
+                ChatMessage message = ChatMessage.parseFrom(record.value());
+                return "topic : " + originalTopic + ", eventId : " + ChatTopics.eventIdOf(message) + ", channelId : " + message.getChannelId()
+                    + ", sendUserId : " + message.getSendUserId() + ", publishDt : " + message.getPublishDt();
+            }
+            if (ChatTopics.CHAT_REACTION.equals(originalTopic)) {
+                ChatReaction reaction = ChatReaction.parseFrom(record.value());
+                return "topic : " + originalTopic + ", messageId : " + reaction.getMessageId() + ", channelId : " + reaction.getChannelId()
+                    + ", sendUserId : " + reaction.getSendUserId() + ", emoji : " + reaction.getEmoji() + ", action : " + reaction.getAction();
+            }
         } catch (InvalidProtocolBufferException e) {
-            consumerMetrics.deadLetter("message");
-            log.error("[dlt] chat-send-message unreadable payload offset : {}, reason : {}", record.offset(), reason);
-            return;
+            return "topic : " + originalTopic + ", unreadable payload";
         }
-
-        String eventId = ChatTopics.eventIdOf(chatMessage);
-        if (chatMessageRepository.findByEventId(eventId).isPresent()) {
-            consumerMetrics.deliveryDropped("message");
-            log.warn("[dlt] chat-send-message saved but delivery dropped eventId : {}, channelId : {}, reason : {}",
-                eventId, chatMessage.getChannelId(), reason);
-            return;
-        }
-        consumerMetrics.deadLetter("message");
-        log.error("[dlt] chat-send-message NOT saved (replay needed) eventId : {}, channelId : {}, sendUserId : {}, publishDt : {}, "
-                + "dltTopic : {}, partition : {}, offset : {}, reason : {}",
-            eventId, chatMessage.getChannelId(), chatMessage.getSendUserId(), chatMessage.getPublishDt(),
-            record.topic(), record.partition(), record.offset(), reason);
-    }
-
-    private void handleReaction(ConsumerRecord<String, byte[]> record, String reason) {
-        if (failedOnDelivery(record)) {
-            consumerMetrics.deliveryDropped("reaction");
-            log.warn("[dlt] chat-reaction applied but delivery dropped offset : {}, reason : {}", record.offset(), reason);
-            return;
-        }
-        consumerMetrics.deadLetter("reaction");
-        String detail;
-        try {
-            ChatReaction reaction = ChatReaction.parseFrom(record.value());
-            detail = "messageId : " + reaction.getMessageId() + ", channelId : " + reaction.getChannelId()
-                + ", sendUserId : " + reaction.getSendUserId() + ", emoji : " + reaction.getEmoji() + ", action : " + reaction.getAction();
-        } catch (InvalidProtocolBufferException e) {
-            detail = "unreadable payload";
-        }
-        log.error("[dlt] chat-reaction NOT applied (replay needed) {}, dltTopic : {}, partition : {}, offset : {}, reason : {}",
-            detail, record.topic(), record.partition(), record.offset(), reason);
+        return "topic : " + originalTopic;
     }
 
     /**

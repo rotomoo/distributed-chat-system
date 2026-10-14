@@ -14,7 +14,6 @@ class ChatPresenceKeysUnitTest {
         // act & assert
         assertThat(ChatPresenceKeys.userKey(5L)).isEqualTo("5");
         assertThat(ChatPresenceKeys.userKeyValue("10.0.0.1:1111")).isEqualTo("ws://10.0.0.1:1111");
-        assertThat(ChatPresenceKeys.chatServerKey("10.0.0.1:1111")).isEqualTo("chatServerUri:10.0.0.1:1111");
         assertThat(ChatPresenceKeys.chatServerOf("ws://10.0.0.1:1111")).isEqualTo("10.0.0.1:1111");
         assertThat(ChatPresenceKeys.chatServerOf("10.0.0.1:1111")).isEqualTo("10.0.0.1:1111");
     }

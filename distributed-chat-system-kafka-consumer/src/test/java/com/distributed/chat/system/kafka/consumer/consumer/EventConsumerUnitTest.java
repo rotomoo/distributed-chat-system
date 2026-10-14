@@ -3,22 +3,23 @@ package com.distributed.chat.system.kafka.consumer.consumer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.distributed.chat.system.kafka.consumer.base.metrics.ConsumerMetrics;
 import com.distributed.chat.system.kafka.consumer.service.ChatAttachmentResolver;
 import com.distributed.chat.system.kafka.consumer.service.DeliveryFailedException;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import com.distributed.chat.system.kafka.consumer.service.ChatMessageDeliveryService;
 import com.distributed.chat.system.mongodb.collection.ChatMessage.Attachment;
 import com.distributed.chat.system.mongodb.collection.ChatMessage.Reaction;
 import com.distributed.chat.system.mongodb.repository.ChatMessageRepository;
+import com.distributed.chat.system.mysql.repository.ChannelUserRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import protobuf.EdaChatMessage.ChatMessage;
@@ -38,6 +40,11 @@ import protobuf.EdaChatMessage.ChatReaction;
 class EventConsumerUnitTest {
 
     private static final String MESSAGE_ID = "6acc66675f99715e286f0f6e";
+
+    /**
+     * 채널 멤버 (MySQL channel_user)
+     */
+    private static final List<Long> MEMBERS = List.of(5L, 9L);
 
     /**
      * 저장된 메시지 ID (전달할 때는 24자리 hex 문자열)
@@ -53,14 +60,16 @@ class EventConsumerUnitTest {
     @Mock
     private ChatAttachmentResolver chatAttachmentResolver;
 
-    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    @Mock
+    private ChannelUserRepository channelUserRepository;
 
+    @InjectMocks
     private EventConsumer eventConsumer;
 
     @BeforeEach
     void setup() {
-        eventConsumer = new EventConsumer(chatMessageRepository, chatMessageDeliveryService, chatAttachmentResolver,
-            new ConsumerMetrics(meterRegistry));
+        // 기본 : 보낸 사람(5)이 채널 멤버. 멤버가 아닌 경우는 따로 테스트
+        lenient().when(channelUserRepository.findMemberUserIds(anyLong())).thenReturn(MEMBERS);
     }
 
     // ── 메시지 ──────────────────────────────────────────────────
@@ -75,7 +84,7 @@ class EventConsumerUnitTest {
         givenSavedAs(SAVED_ID);
 
         // act
-        eventConsumer.consumeChatSendMessage(chatMessage.toByteArray(), "chat-send-message");
+        eventConsumer.consumeChatSendMessage(chatMessage.toByteArray());
 
         // assert
         com.distributed.chat.system.mongodb.collection.ChatMessage saved = savedMessage();
@@ -84,7 +93,7 @@ class EventConsumerUnitTest {
         assertThat(saved.getChannelId()).isEqualTo(0L);
         assertThat(saved.getEventPublishDt()).isEqualTo(Instant.ofEpochMilli(1_700_000_000_000L));
         assertThat(saved.getAttachments()).isNull();
-        verify(chatMessageDeliveryService).deliver(eq(SAVED_ID), eq(chatMessage), eq(List.of()));
+        verify(chatMessageDeliveryService).deliver(eq(SAVED_ID), eq(chatMessage), eq(List.of()), eq(MEMBERS));
     }
 
     @Test
@@ -98,11 +107,11 @@ class EventConsumerUnitTest {
         givenSavedAs(SAVED_ID);
 
         // act
-        eventConsumer.consumeChatSendMessage(chatMessage.toByteArray(), "chat-send-message");
+        eventConsumer.consumeChatSendMessage(chatMessage.toByteArray());
 
         // assert
         assertThat(savedMessage().getAttachments()).isEqualTo(attachments);
-        verify(chatMessageDeliveryService).deliver(SAVED_ID, chatMessage, attachments);
+        verify(chatMessageDeliveryService).deliver(SAVED_ID, chatMessage, attachments, MEMBERS);
     }
 
     @Test
@@ -114,7 +123,7 @@ class EventConsumerUnitTest {
         when(chatAttachmentResolver.resolve(chatMessage)).thenReturn(List.of());
 
         // act
-        eventConsumer.consumeChatSendMessage(chatMessage.toByteArray(), "chat-send-message");
+        eventConsumer.consumeChatSendMessage(chatMessage.toByteArray());
 
         // assert
         verify(chatMessageRepository, never()).saveOnce(any());
@@ -128,7 +137,7 @@ class EventConsumerUnitTest {
         byte[] broken = {(byte) 0xFF, (byte) 0xFF, (byte) 0xFF};
 
         // act
-        eventConsumer.consumeChatSendMessage(broken, "chat-send-message");
+        eventConsumer.consumeChatSendMessage(broken);
 
         // assert
         verify(chatMessageRepository, never()).saveOnce(any());
@@ -136,21 +145,19 @@ class EventConsumerUnitTest {
     }
 
     @Test
-    @DisplayName("success case : 채팅 서버가 만든 eventId 로 한 번만 저장하고 저장 / 전달 시간을 잰다")
-    void 채팅_서버가_만든_eventId_로_한_번만_저장하고_저장_전달_시간을_잰다() {
+    @DisplayName("success case : 채팅 서버가 만든 eventId 로 한 번만 저장하고 저장된 ID 로 전달한다")
+    void 채팅_서버가_만든_eventId_로_한_번만_저장하고_저장된_ID_로_전달한다() {
         // arrange
         ChatMessage chatMessage = message("hello").toBuilder().setEventId("event-1").build();
         when(chatAttachmentResolver.resolve(chatMessage)).thenReturn(List.of());
         givenSavedAs(SAVED_ID);
 
         // act
-        eventConsumer.consumeChatSendMessage(chatMessage.toByteArray(), "chat-send-message");
+        eventConsumer.consumeChatSendMessage(chatMessage.toByteArray());
 
         // assert
         assertThat(savedMessage().getEventId()).isEqualTo("event-1");
-        assertThat(meterRegistry.get("chat.consumer.save").timer().count()).isEqualTo(1);
-        assertThat(meterRegistry.get("chat.consumer.delivery").tag("type", "message").timer().count()).isEqualTo(1);
-        assertThat(meterRegistry.find("chat.consumer.retries").counter()).isNull();
+        verify(chatMessageDeliveryService).deliver(SAVED_ID, chatMessage, List.of(), MEMBERS);
     }
 
     @Test
@@ -162,8 +169,8 @@ class EventConsumerUnitTest {
         givenSavedAs(SAVED_ID);
 
         // act
-        eventConsumer.consumeChatSendMessage(chatMessage.toByteArray(), "chat-send-message");
-        eventConsumer.consumeChatSendMessage(chatMessage.toByteArray(), "chat-send-message-retry-1000");
+        eventConsumer.consumeChatSendMessage(chatMessage.toByteArray());
+        eventConsumer.consumeChatSendMessage(chatMessage.toByteArray());
 
         // assert
         ArgumentCaptor<com.distributed.chat.system.mongodb.collection.ChatMessage> saved =
@@ -171,7 +178,6 @@ class EventConsumerUnitTest {
         verify(chatMessageRepository, times(2)).saveOnce(saved.capture());
         assertThat(saved.getAllValues().get(0).getEventId()).isNotBlank()
             .isEqualTo(saved.getAllValues().get(1).getEventId());
-        assertThat(meterRegistry.get("chat.consumer.retries").tag("topic", "chat-send-message").counter().count()).isEqualTo(1);
     }
 
     @Test
@@ -183,7 +189,7 @@ class EventConsumerUnitTest {
         when(chatMessageRepository.saveOnce(any())).thenThrow(new IllegalStateException("mongo down"));
 
         // act
-        Throwable thrown = catchThrowable(() -> eventConsumer.consumeChatSendMessage(chatMessage.toByteArray(), "chat-send-message"));
+        Throwable thrown = catchThrowable(() -> eventConsumer.consumeChatSendMessage(chatMessage.toByteArray()));
 
         // assert
         assertThat(thrown).isInstanceOf(IllegalStateException.class);
@@ -198,17 +204,44 @@ class EventConsumerUnitTest {
         when(chatAttachmentResolver.resolve(chatMessage)).thenReturn(List.of());
         givenSavedAs(SAVED_ID);
         doThrow(new DeliveryFailedException(List.of("10.0.0.1:1111")))
-            .when(chatMessageDeliveryService).deliver(SAVED_ID, chatMessage, List.of());
+            .when(chatMessageDeliveryService).deliver(SAVED_ID, chatMessage, List.of(), MEMBERS);
 
         // act
-        Throwable thrown = catchThrowable(() -> eventConsumer.consumeChatSendMessage(chatMessage.toByteArray(), "chat-send-message"));
+        Throwable thrown = catchThrowable(() -> eventConsumer.consumeChatSendMessage(chatMessage.toByteArray()));
 
         // assert
         assertThat(thrown).isInstanceOf(DeliveryFailedException.class);
         verify(chatMessageRepository).saveOnce(any());
     }
 
+    @Test
+    @DisplayName("fail case : 보낸 사람이 채널 멤버가 아니면 저장하지도 전달하지도 않고 버린다")
+    void 보낸_사람이_채널_멤버가_아니면_저장하지도_전달하지도_않고_버린다() {
+        // arrange
+        when(channelUserRepository.findMemberUserIds(7L)).thenReturn(List.of(9L, 17L));
+
+        // act
+        eventConsumer.consumeChatSendMessage(message("hello").toByteArray());
+
+        // assert
+        verify(chatMessageRepository, never()).saveOnce(any());
+        verifyNoInteractions(chatMessageDeliveryService, chatAttachmentResolver);
+    }
+
     // ── 리액션 ──────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("fail case : 리액션을 누른 사람이 채널 멤버가 아니면 반영하지도 전달하지도 않는다")
+    void 리액션을_누른_사람이_채널_멤버가_아니면_반영하지도_전달하지도_않는다() {
+        // arrange
+        when(channelUserRepository.findMemberUserIds(7L)).thenReturn(List.of(9L));
+
+        // act
+        eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.ADD).toByteArray());
+
+        // assert
+        verifyNoInteractions(chatMessageRepository, chatMessageDeliveryService);
+    }
 
     @Test
     @DisplayName("success case : add 는 리액션을 더하고 바뀐 뒤의 reactions 전체를 채널에 전달한다")
@@ -218,12 +251,11 @@ class EventConsumerUnitTest {
         when(chatMessageRepository.addReaction(new ObjectId(MESSAGE_ID), 7L, "👍", 5L)).thenReturn(Optional.of(after));
 
         // act
-        eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.ADD).toByteArray(), "chat-reaction");
+        eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.ADD).toByteArray());
 
         // assert
-        verify(chatMessageDeliveryService).deliverReaction(7L, MESSAGE_ID, after);
+        verify(chatMessageDeliveryService).deliverReaction(7L, MESSAGE_ID, after, MEMBERS);
         verify(chatMessageRepository, never()).removeReaction(any(), any(), any(), any());
-        assertThat(meterRegistry.get("chat.consumer.reactions").tag("action", "add").counter().count()).isEqualTo(1);
     }
 
     @Test
@@ -233,10 +265,10 @@ class EventConsumerUnitTest {
         when(chatMessageRepository.removeReaction(new ObjectId(MESSAGE_ID), 7L, "👍", 5L)).thenReturn(Optional.of(List.of()));
 
         // act
-        eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.REMOVE).toByteArray(), "chat-reaction");
+        eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.REMOVE).toByteArray());
 
         // assert
-        verify(chatMessageDeliveryService).deliverReaction(7L, MESSAGE_ID, List.of());
+        verify(chatMessageDeliveryService).deliverReaction(7L, MESSAGE_ID, List.of(), MEMBERS);
         verify(chatMessageRepository, never()).addReaction(any(), any(), any(), any());
     }
 
@@ -247,7 +279,7 @@ class EventConsumerUnitTest {
         when(chatMessageRepository.addReaction(new ObjectId(MESSAGE_ID), 7L, "👍", 5L)).thenReturn(Optional.empty());
 
         // act
-        eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.ADD).toByteArray(), "chat-reaction");
+        eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.ADD).toByteArray());
 
         // assert
         verifyNoInteractions(chatMessageDeliveryService);
@@ -257,10 +289,10 @@ class EventConsumerUnitTest {
     @DisplayName("fail case : action 이 없거나 메시지 ID / 이모지가 틀리거나 읽을 수 없으면 아무것도 바꾸지 않는다")
     void action_이_없거나_메시지_ID_이모지가_틀리거나_읽을_수_없으면_아무것도_바꾸지_않는다() {
         // act
-        eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.ACTION_UNSPECIFIED).toByteArray(), "chat-reaction");
-        eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.ADD).toBuilder().setMessageId("abc").build().toByteArray(), "chat-reaction");
-        eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.ADD).toBuilder().setEmoji(" ").build().toByteArray(), "chat-reaction");
-        eventConsumer.consumeChatReaction(new byte[]{(byte) 0xFF, (byte) 0xFF}, "chat-reaction");
+        eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.ACTION_UNSPECIFIED).toByteArray());
+        eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.ADD).toBuilder().setMessageId("abc").build().toByteArray());
+        eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.ADD).toBuilder().setEmoji(" ").build().toByteArray());
+        eventConsumer.consumeChatReaction(new byte[]{(byte) 0xFF, (byte) 0xFF});
 
         // assert
         verifyNoInteractions(chatMessageRepository, chatMessageDeliveryService);
@@ -272,10 +304,10 @@ class EventConsumerUnitTest {
         // arrange
         List<Reaction> after = List.of(new Reaction("👍", List.of(5L)));
         when(chatMessageRepository.addReaction(new ObjectId(MESSAGE_ID), 7L, "👍", 5L)).thenReturn(Optional.of(after));
-        doThrow(new DeliveryFailedException(List.of("10.0.0.1:1111"))).when(chatMessageDeliveryService).deliverReaction(7L, MESSAGE_ID, after);
+        doThrow(new DeliveryFailedException(List.of("10.0.0.1:1111"))).when(chatMessageDeliveryService).deliverReaction(7L, MESSAGE_ID, after, MEMBERS);
 
         // act
-        Throwable thrown = catchThrowable(() -> eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.ADD).toByteArray(), "chat-reaction"));
+        Throwable thrown = catchThrowable(() -> eventConsumer.consumeChatReaction(reaction(ChatReaction.Action.ADD).toByteArray()));
 
         // assert
         assertThat(thrown).isInstanceOf(DeliveryFailedException.class);

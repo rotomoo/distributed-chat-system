@@ -37,12 +37,6 @@ public class ChannelUser extends BaseLoginInfoEntity {
     @Column(columnDefinition = "int(10) unsigned not null comment '회원 ID'")
     private Long userId;
 
-    @Column(columnDefinition = "int(10) unsigned not null default 0 comment '안읽은 메시지 수'")
-    private Integer unreadCnt;
-
-    @Column(columnDefinition = "varchar(50) comment '마지막 메시지'")
-    private String lastMessage;
-
     /**
      * 이 채널에서 마지막으로 읽은 메시지 (MongoDB chatMessage _id, 소문자 hex 24자리). 안 읽은 수 = 이보다 뒤의 남이 보낸 메시지.
      * 소문자 hex 고정 길이라 문자열 비교 순서가 ObjectId(시간) 순서와 같다

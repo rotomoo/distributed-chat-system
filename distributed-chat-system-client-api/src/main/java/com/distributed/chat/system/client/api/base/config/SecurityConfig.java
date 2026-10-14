@@ -34,7 +34,6 @@ public class SecurityConfig {
 
     private final String[] publicPaths = List.of(
         "/v1/public/**",
-        "/internal/**", // 서버간 내부 통신. api-gateway 는 /v1/** 만 라우팅하므로 외부에 노출되지 않는다
         "/"
     ).toArray(new String[0]);
 

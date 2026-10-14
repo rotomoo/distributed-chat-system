@@ -1,13 +1,11 @@
 package com.distributed.chat.system.chatting.base.handler;
 
-import com.distributed.chat.system.chatting.web.controller.feign.ClientApiClient;
+import com.distributed.chat.system.chatting.base.presence.UserLocationRegistry;
 import com.distributed.chat.system.chatting.web.controller.feign.KafkaProducerClient;
 import com.distributed.chat.system.common.exception.ErrorCode;
-import com.distributed.chat.system.common.redis.ChatPresenceKeys;
 import com.distributed.chat.system.common.util.NetworkUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.distributed.chat.system.chatting.base.metrics.ChatServerMetrics;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
@@ -19,9 +17,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.types.ObjectId;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -38,11 +36,11 @@ import protobuf.EdaChatMessage.ChatReactionDelivery;
  * 한 유저가 여러 기기(PC, 폰, 탭)로 동시에 접속할 수 있다.
  * <ul>
  *   <li>서버 메모리 : userId → { 웹소켓 세션ID → 세션 } (기기마다 소켓이 따로 있으므로 모두 보관)</li>
- *   <li>Redis {@code chatServerUri:{ip:port}} : 이 서버에 접속한 userId Set. 이 서버에서 그 유저의 마지막 소켓이 끊길 때만 뺀다</li>
- *   <li>Redis {@code {userId}} : 마지막으로 붙은 채팅 서버 (api-gateway 라우팅 참고용)</li>
+ *   <li>Redis {@code {userId}} : 그 유저의 기기들이 모인 채팅 서버 ({@link UserLocationRegistry}). 컨슈머 / api-gateway 가 읽는다</li>
  * </ul>
- * {@code chatServerUri:{ip:port}} 는 이 서버만 쓰는 키라서 서버 간 경쟁이 없고, 서버 안의 경쟁(같은 유저의 동시 접속/해제)은
- * {@link ConcurrentHashMap#compute} 로 유저 단위 직렬화한다.
+ * 서버 안의 경쟁(같은 유저의 동시 접속/해제)은 {@link ConcurrentHashMap#compute} 로 유저 단위 직렬화한다.
+ * <p>
+ * 채팅 서버는 메시지 / 리액션의 형식만 검사하고 발행한다. 채널 멤버인지는 컨슈머가 원본(MySQL channel_user)에서 한 번만 확인한다
  */
 @Slf4j
 @Component
@@ -51,13 +49,17 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
     private static final int MAX_MESSAGE_LENGTH = 4000;
     private static final int SEND_TIME_LIMIT_MS = 5000;
     private static final int SEND_BUFFER_SIZE_LIMIT = 512 * 1024;
-    private static final String CHANNEL_MEMBERS_KEY_PREFIX = "channel:";
+
+    /**
+     * 이 유저는 다른 채팅 서버에 붙어 있다 (유저 하나 = 서버 하나). 클라이언트는 그냥 다시 붙으면 되고,
+     * 다시 붙을 때 api-gateway 가 Redis {userId} 를 보고 그 서버로 보낸다. 409(Conflict) 를 본뜬 앱 정의 코드
+     */
+    public static final CloseStatus CONNECTED_TO_OTHER_SERVER = new CloseStatus(4409, "connected to another chat server");
     private static final int MAX_ATTACHMENTS = 10;
     private static final int MAX_EMOJI_LENGTH = 32;
 
     private static final TextMessage PING = new TextMessage("{\"type\":\"ping\"}");
 
-    private final RedisTemplate redisTemplate;
     private final Map<String, Map<String, WebSocketSession>> webSocketSessionMap = new ConcurrentHashMap<>();
 
     /**
@@ -65,20 +67,16 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
      */
     private final Map<String, Long> lastSeenAtBySession = new ConcurrentHashMap<>();
     private final KafkaProducerClient kafkaProducerClient;
-    private final ClientApiClient clientApiClient;
+    private final UserLocationRegistry userLocationRegistry;
     private final ObjectMapper objectMapper;
     private final Clock clock;
-    private final ChatServerMetrics chatServerMetrics;
 
-    public CustomTextWebSocketHandler(RedisTemplate redisTemplate, KafkaProducerClient kafkaProducerClient,
-        ClientApiClient clientApiClient, ObjectMapper objectMapper, Clock clock, ChatServerMetrics chatServerMetrics) {
-        this.redisTemplate = redisTemplate;
+    public CustomTextWebSocketHandler(KafkaProducerClient kafkaProducerClient, UserLocationRegistry userLocationRegistry,
+        ObjectMapper objectMapper, Clock clock) {
         this.kafkaProducerClient = kafkaProducerClient;
-        this.clientApiClient = clientApiClient;
+        this.userLocationRegistry = userLocationRegistry;
         this.objectMapper = objectMapper;
         this.clock = clock;
-        this.chatServerMetrics = chatServerMetrics;
-        chatServerMetrics.bindOpenSessions(this::openSessionCount);
     }
 
     @Override
@@ -94,17 +92,26 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         WebSocketSession concurrentSession = new ConcurrentWebSocketSessionDecorator(
             webSocketSession, SEND_TIME_LIMIT_MS, SEND_BUFFER_SIZE_LIMIT);
 
-        lastSeenAtBySession.put(webSocketSession.getId(), clock.millis());
-
         // 같은 유저의 접속/해제가 끼어들지 않도록 Redis 갱신까지 유저 단위로 묶는다
+        AtomicBoolean accepted = new AtomicBoolean();
         this.webSocketSessionMap.compute(userId, (key, sessions) -> {
+            if (!userLocationRegistry.claim(userId, chatServerUri)) {
+                return sessions;
+            }
+            accepted.set(true);
             Map<String, WebSocketSession> userSessions = sessions == null ? new ConcurrentHashMap<>() : sessions;
             userSessions.put(webSocketSession.getId(), concurrentSession);
-
-            redisTemplate.opsForValue().set(ChatPresenceKeys.userKey(userId), ChatPresenceKeys.userKeyValue(chatServerUri));
-            redisTemplate.opsForSet().add(ChatPresenceKeys.chatServerKey(chatServerUri), userId);
             return userSessions;
         });
+
+        if (!accepted.get()) {
+            // 다른 살아 있는 서버에 이 유저의 기기가 있다 → 닫으면 클라이언트가 다시 붙고 api-gateway 가 그 서버로 보낸다
+            log.info("{} userId : {} is on another chat server, close {}", webSocketSession.getId(), userId,
+                CONNECTED_TO_OTHER_SERVER.getCode());
+            webSocketSession.close(CONNECTED_TO_OTHER_SERVER);
+            return;
+        }
+        lastSeenAtBySession.put(webSocketSession.getId(), clock.millis());
 
         // 접속 정보 기록까지 끝났음을 알린다. 클라이언트는 이 신호를 받아야 "연결됨"으로 본다.
         // (api-gateway 는 채팅 서버에 붙기 전에 클라이언트에 101 을 먼저 보내므로, 101 만으로는 실제 연결을 보장하지 못한다)
@@ -121,7 +128,7 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
      *       : 첨부가 있으면 message 는 비어도 된다. 첨부 최대 10개 (이름/형식/크기는 컨슈머가 GridFS 에서 채운다)</li>
      *   <li>{"type": "reaction", "channelId": 1, "messageId": "...", "emoji": "👍", "action": "add" | "remove"}</li>
      * </ul>
-     * 채널 멤버가 아니거나 형식이 틀리면 보낸 사람에게 {"type": "error", ...} 를 돌려주고 발행하지 않는다
+     * 형식이 틀리면 보낸 사람에게 {"type": "error", ...} 를 돌려주고 발행하지 않는다 (채널 멤버 확인은 컨슈머가 한다)
      */
     @Override
     public void handleMessage(WebSocketSession webSocketSession, WebSocketMessage<?> message) throws Exception {
@@ -138,14 +145,8 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         }
 
         switch (payload.path("type").asText()) {
-            case "message" -> {
-                chatServerMetrics.received("message");
-                handleChatMessage(webSocketSession, userId, payload);
-            }
-            case "reaction" -> {
-                chatServerMetrics.received("reaction");
-                handleReaction(webSocketSession, userId, payload);
-            }
+            case "message" -> handleChatMessage(webSocketSession, userId, payload);
+            case "reaction" -> handleReaction(webSocketSession, userId, payload);
             case "pong" -> {
                 // 하트비트 응답. 위에서 마지막 수신 시각을 이미 갱신했다
             }
@@ -163,10 +164,6 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        if (!isChannelMember(channelId, userId)) {
-            sendError(webSocketSession, ErrorCode.NOT_CHANNEL_MEMBER);
-            return;
-        }
         log.info("{} sent to channel {}", webSocketSession.getId(), channelId);
 
         ChatMessage chatMessage = ChatMessage.newBuilder()
@@ -180,7 +177,6 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
             .build();
 
         kafkaProducerClient.publishChatSendMessage(chatMessage);
-        chatServerMetrics.published("message");
     }
 
     private void handleReaction(WebSocketSession webSocketSession, String userId, JsonNode payload) throws IOException {
@@ -197,10 +193,6 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        if (!isChannelMember(channelId, userId)) {
-            sendError(webSocketSession, ErrorCode.NOT_CHANNEL_MEMBER);
-            return;
-        }
 
         kafkaProducerClient.publishChatReaction(ChatReaction.newBuilder()
             .setSendUserId(Long.parseLong(userId))
@@ -210,7 +202,6 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
             .setAction(action)
             .setPublishDt(System.currentTimeMillis())
             .build());
-        chatServerMetrics.published("reaction");
     }
 
     /**
@@ -247,17 +238,6 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         return length >= 1 && length <= MAX_EMOJI_LENGTH && emoji.codePoints().noneMatch(Character::isWhitespace);
     }
 
-    /**
-     * Redis channel:{id}:members 로 확인. 키가 없으면(Redis 유실 등) client-api 에 MySQL 기준으로 다시 채워 달라고 한다
-     */
-    private boolean isChannelMember(long channelId, String userId) {
-        String channelKey = CHANNEL_MEMBERS_KEY_PREFIX + channelId + ":members";
-        if (!Boolean.TRUE.equals(redisTemplate.hasKey(channelKey))) {
-            return clientApiClient.refreshChannelMembers(channelId).contains(Long.parseLong(userId));
-        }
-        return Boolean.TRUE.equals(redisTemplate.opsForSet().isMember(channelKey, userId));
-    }
-
     private void sendError(WebSocketSession webSocketSession, ErrorCode errorCode) throws IOException {
         String userId = (String) webSocketSession.getAttributes().get("userId");
         WebSocketSession concurrentSession = getSessions(userId).stream()
@@ -280,14 +260,12 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         String userId = (String) webSocketSession.getAttributes().get("userId");
         String chatServerUri = (String) webSocketSession.getAttributes().get("chatServerUri");
 
-        // 끊긴 기기만 뺀다. 이 서버에서 그 유저의 마지막 기기일 때만 Redis 접속 정보에서 제거
-        // ({userId} 라우팅 키는 남겨서 재접속 시 같은 서버로 오게 한다)
+        // 끊긴 기기만 뺀다. 이 서버에서 그 유저의 마지막 기기일 때만 Redis {userId} 를 지운다 (값이 아직 이 서버일 때만)
         this.webSocketSessionMap.computeIfPresent(userId, (key, userSessions) -> {
-            userSessions.remove(webSocketSession.getId());
-            if (!userSessions.isEmpty()) {
-                return userSessions;
+            if (userSessions.remove(webSocketSession.getId()) == null || !userSessions.isEmpty()) {
+                return userSessions.isEmpty() ? null : userSessions;
             }
-            redisTemplate.opsForSet().remove(ChatPresenceKeys.chatServerKey(chatServerUri), userId);
+            userLocationRegistry.release(userId, chatServerUri);
             return null;
         });
     }
@@ -359,7 +337,6 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
                 long lastSeenAt = lastSeenAtBySession.getOrDefault(session.getId(), now);
                 if (now - lastSeenAt > timeout.toMillis()) {
                     log.info("heartbeat timeout session : {}, silent {}ms", session.getId(), now - lastSeenAt);
-                    chatServerMetrics.heartbeatTimedOut();
                     closeQuietly(session);
                     continue;
                 }
@@ -378,11 +355,9 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         }
         try {
             session.sendMessage(textMessage);
-            chatServerMetrics.frameSent();
         } catch (IOException | RuntimeException e) {
             // RuntimeException : ConcurrentWebSocketSessionDecorator 의 보내기 시간 / 버퍼 한도 초과 등
             log.warn("send fail session : {}, error : {}", session.getId(), e.getMessage());
-            chatServerMetrics.sendFailed();
             closeQuietly(session);
         }
     }
@@ -393,10 +368,6 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         } catch (IOException | RuntimeException e) {
             log.debug("close fail session : {}, error : {}", session.getId(), e.getMessage());
         }
-    }
-
-    private int openSessionCount() {
-        return webSocketSessionMap.values().stream().mapToInt(Map::size).sum();
     }
 
     /**

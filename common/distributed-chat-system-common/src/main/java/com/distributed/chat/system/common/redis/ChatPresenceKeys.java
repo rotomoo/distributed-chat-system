@@ -1,36 +1,28 @@
 package com.distributed.chat.system.common.redis;
 
 /**
- * 채팅 서버 접속 정보 Redis 키 모양 (채팅 서버가 쓰고 client-api / 컨슈머 / service-discovery 가 읽는다)
+ * 채팅 서버 접속 위치 Redis 키 모양. 쓰는 쪽은 채팅 서버 하나뿐이고 consumer / client-api / api-gateway 는 읽기만 한다
  * <ul>
- *   <li>{@code {userId}} → "ws://{ip:port}" : 그 유저가 마지막으로 붙은 채팅 서버 (api-gateway 라우팅용)</li>
- *   <li>{@code chatServerUri:{ip:port}} → { userId, ... } : 그 채팅 서버에 지금 연결된 유저 Set</li>
+ *   <li>{@code {userId}} → "ws://{ip:port}" : 그 유저의 기기들이 모여 있는 채팅 서버 (유저 하나 = 서버 하나)</li>
  * </ul>
+ * 값이 없거나 가리키는 서버가 Eureka 에 없으면(죽은 서버) 오프라인이다 ({@link ChatServers})
  */
 public final class ChatPresenceKeys {
 
-    public static final String CHAT_SERVER_KEY_PREFIX = "chatServerUri:";
     public static final String WEBSOCKET_SCHEME = "ws://";
 
     private ChatPresenceKeys() {
     }
 
     /**
-     * 유저가 마지막으로 붙은 채팅 서버 키 (키 = userId 그대로)
+     * 유저의 접속 위치 키 (키 = userId 그대로)
      */
     public static String userKey(Object userId) {
         return String.valueOf(userId);
     }
 
     /**
-     * @param chatServer ip:port
-     */
-    public static String chatServerKey(String chatServer) {
-        return CHAT_SERVER_KEY_PREFIX + chatServer;
-    }
-
-    /**
-     * {@link #userKey} 의 값 : "ws://{ip:port}"
+     * {@link #userKey} 의 값 : "ws://{ip:port}" (api-gateway 가 그대로 라우팅 주소로 쓴다)
      */
     public static String userKeyValue(String chatServer) {
         return WEBSOCKET_SCHEME + chatServer;

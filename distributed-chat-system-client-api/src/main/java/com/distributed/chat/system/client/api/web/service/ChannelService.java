@@ -1,6 +1,5 @@
 package com.distributed.chat.system.client.api.web.service;
 
-import com.distributed.chat.system.client.api.base.cache.ChannelMemberCache;
 import com.distributed.chat.system.client.api.base.security.SecurityUtil;
 import com.distributed.chat.system.client.api.web.dto.channel.ChannelDto;
 import com.distributed.chat.system.client.api.web.dto.channel.CreateChannelRequestDto;
@@ -42,7 +41,6 @@ public class ChannelService {
     private final ChannelUserRepository channelUserRepository;
     private final TeamUserRepository teamUserRepository;
     private final UserRepository userRepository;
-    private final ChannelMemberCache channelMemberCache;
     private final ChannelMessageService channelMessageService;
 
     /**
@@ -153,18 +151,7 @@ public class ChannelService {
     }
 
     /**
-     * 채널 멤버 캐시를 MySQL 기준으로 다시 채우고 멤버 ID 를 돌려준다 (채팅 서버가 캐시 키가 없을 때 호출)
-     */
-    public List<Long> refreshMemberCache(Long channelId) {
-        List<Long> memberIds = channelUserRepository.findAllByChannelIdAndDeleteYnIsFalse(channelId).stream()
-            .map(ChannelUser::getUserId)
-            .toList();
-        channelMemberCache.replace(channelId, memberIds);
-        return memberIds;
-    }
-
-    /**
-     * 채널 멤버로 추가 (이미 멤버면 DB 는 그대로). MySQL 이 원본, Redis 는 전달용 캐시
+     * 채널 멤버로 추가 (이미 멤버면 그대로). 채널 멤버는 MySQL channel_user 에만 있다 (컨슈머가 메시지마다 여기서 읽는다)
      */
     public void join(Long channelId, Long userId) {
         if (!channelUserRepository.existsByChannelIdAndUserIdAndDeleteYnIsFalse(channelId, userId)) {
@@ -173,7 +160,6 @@ public class ChannelService {
                 .userId(userId)
                 .build());
         }
-        channelMemberCache.add(channelId, userId);
     }
 
     public Channel saveChannel(Long teamId, String channelName, ChannelType channelType) {

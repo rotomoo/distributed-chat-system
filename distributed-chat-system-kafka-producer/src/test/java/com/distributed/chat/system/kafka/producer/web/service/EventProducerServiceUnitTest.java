@@ -1,19 +1,14 @@
 package com.distributed.chat.system.kafka.producer.web.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import java.util.concurrent.CompletableFuture;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.support.SendResult;
 import protobuf.EdaChatMessage.ChatMessage;
 import protobuf.EdaChatMessage.ChatReaction;
 
@@ -24,14 +19,8 @@ class EventProducerServiceUnitTest {
     @Mock
     private KafkaTemplate<String, byte[]> kafkaTemplate;
 
-    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
-
+    @InjectMocks
     private EventProducerService eventProducerService;
-
-    @BeforeEach
-    void setup() {
-        eventProducerService = new EventProducerService(kafkaTemplate, meterRegistry);
-    }
 
     @Test
     @DisplayName("success case : 채널 ID 를 키로 발행해서 같은 채널 메시지는 같은 파티션으로 간다")
@@ -39,8 +28,6 @@ class EventProducerServiceUnitTest {
         // arrange
         ChatMessage chatMessage = ChatMessage.newBuilder()
             .setSendUserId(5L).setChannelId(7L).setMessage("hello").setPublishDt(1_700_000_000_000L).build();
-
-        when(kafkaTemplate.send("chat-send-message", "7", chatMessage.toByteArray())).thenReturn(new CompletableFuture<>());
 
         // act
         eventProducerService.publishChatSendMessage(chatMessage);
@@ -57,37 +44,10 @@ class EventProducerServiceUnitTest {
             .setSendUserId(5L).setChannelId(7L).setMessageId("6acc66675f99715e286f0f6e").setEmoji("👍")
             .setAction(ChatReaction.Action.ADD).setPublishDt(1_700_000_000_000L).build();
 
-        when(kafkaTemplate.send("chat-reaction", "7", chatReaction.toByteArray())).thenReturn(new CompletableFuture<>());
-
         // act
         eventProducerService.publishChatReaction(chatReaction);
 
         // assert
         verify(kafkaTemplate).send("chat-reaction", "7", chatReaction.toByteArray());
-    }
-
-    @Test
-    @DisplayName("success case : 브로커가 받으면 성공으로, 실패하면 실패로 발행 시간 / 수를 센다")
-    void 브로커가_받으면_성공으로_실패하면_실패로_발행_시간_수를_센다() {
-        // arrange
-        ChatMessage chatMessage = ChatMessage.newBuilder().setSendUserId(5L).setChannelId(7L).setMessage("hello").build();
-        CompletableFuture<SendResult<String, byte[]>> acked = new CompletableFuture<>();
-        CompletableFuture<SendResult<String, byte[]>> ackedAgain = new CompletableFuture<>();
-        CompletableFuture<SendResult<String, byte[]>> failed = new CompletableFuture<>();
-        when(kafkaTemplate.send("chat-send-message", "7", chatMessage.toByteArray())).thenReturn(acked, ackedAgain, failed);
-
-        // act : 성공 2, 실패 1
-        eventProducerService.publishChatSendMessage(chatMessage);
-        eventProducerService.publishChatSendMessage(chatMessage);
-        eventProducerService.publishChatSendMessage(chatMessage);
-        acked.complete(null);
-        ackedAgain.complete(null);
-        failed.completeExceptionally(new IllegalStateException("broker down"));
-
-        // assert
-        assertThat(meterRegistry.get("chat.producer.publish").tag("topic", "chat-send-message").tag("result", "success").timer().count())
-            .isEqualTo(2);
-        assertThat(meterRegistry.get("chat.producer.publish").tag("topic", "chat-send-message").tag("result", "failure").timer().count())
-            .isEqualTo(1);
     }
 }

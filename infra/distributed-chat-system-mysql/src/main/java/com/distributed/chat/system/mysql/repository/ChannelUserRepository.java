@@ -23,6 +23,12 @@ public interface ChannelUserRepository extends JpaRepository<ChannelUser, Channe
     boolean existsByChannelIdAndUserIdAndDeleteYnIsFalse(Long channelId, Long userId);
 
     /**
+     * 채널 멤버 ID 만 (메시지 전달 대상). PK (channel_id, user_id) 의 앞부분으로 찾는다
+     */
+    @Query("select cu.userId from ChannelUser cu where cu.channelId = :channelId and cu.deleteYn = false")
+    List<Long> findMemberUserIds(@Param("channelId") Long channelId);
+
+    /**
      * 마지막으로 읽은 메시지를 앞으로만 옮긴다 (기존 값보다 뒤일 때만). 조건과 갱신을 한 문장으로 해서 동시 요청에도 뒤로 가지 않는다.
      * messageId 는 소문자 hex 24자리여야 한다 (문자열 비교 = ObjectId 순서)
      *

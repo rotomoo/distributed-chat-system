@@ -4,8 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -13,20 +17,33 @@ import com.distributed.chat.system.kafka.consumer.feign.ChatServerClient;
 import com.distributed.chat.system.mongodb.collection.ChatMessage.Attachment;
 import com.distributed.chat.system.mongodb.collection.ChatMessage.Reaction;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.LongStream;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cloud.client.DefaultServiceInstance;
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.connection.RedisStringCommands;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.SetOperations;
+import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
 import protobuf.EdaChatMessage.ChatMessage;
 import protobuf.EdaChatMessage.ChatMessageDelivery;
 import protobuf.EdaChatMessage.ChatReactionDelivery;
@@ -35,14 +52,16 @@ import protobuf.EdaChatMessage.ChatReactionDelivery;
 @ExtendWith(MockitoExtension.class)
 class ChatMessageDeliveryServiceUnitTest {
 
-    private static final URI CHAT_SERVER_1 = URI.create("http://10.0.0.1:1111");
-    private static final URI CHAT_SERVER_2 = URI.create("http://10.0.0.2:2222");
+    private static final String SERVER_1 = "10.0.0.1:1111";
+    private static final String SERVER_2 = "10.0.0.2:2222";
+    private static final URI CHAT_SERVER_1 = URI.create("http://" + SERVER_1);
+    private static final URI CHAT_SERVER_2 = URI.create("http://" + SERVER_2);
 
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
 
     @Mock
-    private SetOperations<String, Object> setOperations;
+    private ValueOperations<String, Object> valueOperations;
 
     @Mock
     private DiscoveryClient discoveryClient;
@@ -50,74 +69,175 @@ class ChatMessageDeliveryServiceUnitTest {
     @Mock
     private ChatServerClient chatServerClient;
 
-    @InjectMocks
+    private ExecutorService executor;
+
     private ChatMessageDeliveryService chatMessageDeliveryService;
 
     private final ChatMessage chatMessage = ChatMessage.newBuilder()
-        .setSendUserId(5L)
-        .setChannelId(7L)
-        .setMessage("hello")
-        .setPublishDt(1_700_000_000_000L)
-        .build();
+        .setSendUserId(5L).setChannelId(7L).setMessage("hello").setPublishDt(1_700_000_000_000L).build();
 
-    @Test
-    @DisplayName("success case : 채팅 서버마다 그 서버 접속자 중 채널 멤버에게만 한 번씩 전달한다")
-    void 채팅_서버마다_그_서버_접속자_중_채널_멤버에게만_한_번씩_전달한다() {
-        // arrange
-        givenChatServers(chatServer("10.0.0.1", 1111), chatServer("10.0.0.2", 2222));
-        when(setOperations.intersect("chatServerUri:10.0.0.1:1111", "channel:7:members")).thenReturn(Set.of("5", "17"));
-        when(setOperations.intersect("chatServerUri:10.0.0.2:2222", "channel:7:members")).thenReturn(Set.of("9"));
+    @BeforeEach
+    void setup() {
+        executor = Executors.newFixedThreadPool(4);
+        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        givenAliveChatServers(chatServer("10.0.0.1", 1111), chatServer("10.0.0.2", 2222));
+        chatMessageDeliveryService = new ChatMessageDeliveryService(redisTemplate, discoveryClient, chatServerClient, executor);
+    }
 
-        // act
-        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of());
-
-        // assert
-        assertDelivered(CHAT_SERVER_1, List.of(5L, 17L));
-        assertDelivered(CHAT_SERVER_2, List.of(9L));
+    @AfterEach
+    void tearDown() {
+        executor.shutdownNow();
     }
 
     @Test
-    @DisplayName("success case : 채널 멤버가 접속하지 않은 채팅 서버에는 보내지 않는다")
-    void 채널_멤버가_접속하지_않은_채팅_서버에는_보내지_않는다() {
+    @DisplayName("success case : 멤버 접속 위치를 MGET 한 번으로 읽어 채팅 서버별로 묶어 서버당 한 번씩 보낸다")
+    void 멤버_접속_위치를_MGET_한_번으로_읽어_채팅_서버별로_묶어_서버당_한_번씩_보낸다() {
         // arrange
-        givenChatServers(chatServer("10.0.0.1", 1111), chatServer("10.0.0.2", 2222));
-        when(setOperations.intersect("chatServerUri:10.0.0.1:1111", "channel:7:members")).thenReturn(Set.of());
-        when(setOperations.intersect("chatServerUri:10.0.0.2:2222", "channel:7:members")).thenReturn(Set.of("9"));
+        givenLocations(List.of("5", "9", "17"), "ws://" + SERVER_1, "ws://" + SERVER_2, "ws://" + SERVER_1);
 
         // act
-        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of());
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), List.of(5L, 9L, 17L));
 
         // assert
-        verify(chatServerClient, never()).deliver(eq(CHAT_SERVER_1), any());
-        assertDelivered(CHAT_SERVER_2, List.of(9L));
+        assertDelivered(CHAT_SERVER_1, List.of(List.of(5L, 17L)));
+        assertDelivered(CHAT_SERVER_2, List.of(List.of(9L)));
+        verify(valueOperations, times(1)).multiGet(any());
     }
 
     @Test
-    @DisplayName("fail case : 한 채팅 서버 전달이 실패해도 나머지 서버에는 전달하고, 끝에서 실패한 서버를 담아 예외를 던진다 (재시도 토픽으로)")
-    void 한_채팅_서버_전달이_실패해도_나머지_서버에는_전달하고_끝에서_예외를_던진다() {
+    @DisplayName("success case : 접속 위치가 없거나(앱 꺼짐) 죽은 서버(Eureka 에 없음)를 가리키면 오프라인이라 보내지 않는다")
+    void 접속_위치가_없거나_죽은_서버를_가리키면_오프라인이라_보내지_않는다() {
         // arrange
-        givenChatServers(chatServer("10.0.0.1", 1111), chatServer("10.0.0.2", 2222));
-        when(setOperations.intersect("chatServerUri:10.0.0.1:1111", "channel:7:members")).thenReturn(Set.of("5"));
-        when(setOperations.intersect("chatServerUri:10.0.0.2:2222", "channel:7:members")).thenReturn(Set.of("9"));
-        doThrow(new RuntimeException("timeout")).when(chatServerClient).deliver(eq(CHAT_SERVER_1), any());
+        givenLocations(List.of("5", "9", "17"), "ws://" + SERVER_1, null, "ws://10.0.0.9:9999");
+
+        // act
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), List.of(5L, 9L, 17L));
+
+        // assert
+        assertDelivered(CHAT_SERVER_1, List.of(List.of(5L)));
+        verify(chatServerClient, never()).deliver(eq(CHAT_SERVER_2), any());
+        verify(chatServerClient, never()).deliver(eq(URI.create("http://10.0.0.9:9999")), any());
+    }
+
+    @Test
+    @DisplayName("success case : 한 서버의 수신자가 딱 500 명이면 한 번에 보낸다")
+    void 한_서버의_수신자가_딱_500_명이면_한_번에_보낸다() {
+        // arrange
+        List<Long> members = memberIds(500);
+        givenLocationsOnServer1(members);
+
+        // act
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), members);
+
+        // assert
+        assertThat(deliveredChunkSizes(CHAT_SERVER_1)).containsExactly(500);
+    }
+
+    @Test
+    @DisplayName("success case : 한 서버에 501 명이면 500 / 1 로 나눠 보낸다")
+    void 한_서버에_501_명이면_500_1_로_나눠_보낸다() {
+        // arrange
+        List<Long> members = memberIds(501);
+        givenLocationsOnServer1(members);
+
+        // act
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), members);
+
+        // assert
+        assertThat(deliveredChunkSizes(CHAT_SERVER_1)).containsExactly(500, 1);
+    }
+
+    @Test
+    @DisplayName("success case : 한 서버에 1200 명이면 500 / 500 / 200 으로 나눠 보낸다")
+    void 한_서버에_1200_명이면_500_500_200_으로_나눠_보낸다() {
+        // arrange
+        List<Long> members = memberIds(1200);
+        givenLocationsOnServer1(members);
+
+        // act
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), members);
+
+        // assert
+        assertThat(deliveredChunkSizes(CHAT_SERVER_1)).containsExactly(500, 500, 200);
+    }
+
+    @Test
+    @DisplayName("success case : 멤버가 500 명을 넘으면 접속 위치를 500 개씩 MGET 해서 파이프라인 한 번으로 읽는다")
+    void 멤버가_500_명을_넘으면_접속_위치를_500_개씩_MGET_해서_파이프라인_한_번으로_읽는다() {
+        // arrange : 1200 명 = MGET 500 / 500 / 200
+        List<Long> members = memberIds(1200);
+        when(redisTemplate.getKeySerializer()).thenReturn((org.springframework.data.redis.serializer.RedisSerializer) StringRedisSerializer.UTF_8);
+        ArgumentCaptor<RedisCallback<Object>> callback = ArgumentCaptor.forClass(RedisCallback.class);
+        when(redisTemplate.executePipelined(callback.capture())).thenReturn(List.of(
+            Collections.nCopies(500, "ws://" + SERVER_1), Collections.nCopies(500, "ws://" + SERVER_2), Collections.nCopies(200, null)));
+
+        // act
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), members);
+
+        // assert : 파이프라인 안에서 MGET 을 500 / 500 / 200 키로 부른다
+        RedisConnection connection = mock(RedisConnection.class);
+        RedisStringCommands stringCommands = mock(RedisStringCommands.class);
+        when(connection.stringCommands()).thenReturn(stringCommands);
+        callback.getValue().doInRedis(connection);
+        ArgumentCaptor<byte[][]> keys = ArgumentCaptor.forClass(byte[][].class);
+        verify(stringCommands, times(3)).mGet(keys.capture());
+        assertThat(keys.getAllValues()).extracting(batch -> batch.length).containsExactly(500, 500, 200);
+        assertThat(new String(keys.getAllValues().get(0)[0], StandardCharsets.UTF_8)).isEqualTo("1");
+        verify(valueOperations, never()).multiGet(any());
+        // 앞 500 명은 서버 1, 다음 500 명은 서버 2, 마지막 200 명은 오프라인
+        assertThat(deliveredChunkSizes(CHAT_SERVER_1)).containsExactly(500);
+        assertThat(deliveredChunkSizes(CHAT_SERVER_2)).containsExactly(500);
+    }
+
+    @Test
+    @DisplayName("success case : 서로 다른 서버에는 동시에 보내고 모두 끝난 뒤에 돌아온다")
+    void 서로_다른_서버에는_동시에_보내고_모두_끝난_뒤에_돌아온다() throws Exception {
+        // arrange : 서버 1 전송은 서버 2 전송이 시작될 때까지 기다린다 (차례로 보내면 여기서 막힌다)
+        givenLocations(List.of("5", "9"), "ws://" + SERVER_1, "ws://" + SERVER_2);
+        CountDownLatch server2Started = new CountDownLatch(1);
+        AtomicBoolean server1Finished = new AtomicBoolean();
+        doAnswer(invocation -> {
+            assertThat(server2Started.await(5, TimeUnit.SECONDS)).isTrue();
+            Thread.sleep(200);
+            server1Finished.set(true);
+            return null;
+        }).when(chatServerClient).deliver(eq(CHAT_SERVER_1), any());
+        doAnswer(invocation -> {
+            server2Started.countDown();
+            return null;
+        }).when(chatServerClient).deliver(eq(CHAT_SERVER_2), any());
+
+        // act
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), List.of(5L, 9L));
+
+        // assert
+        assertThat(server1Finished).isTrue();
+    }
+
+    @Test
+    @DisplayName("fail case : 한 서버 전달이 실패해도 다른 서버에는 보내고, 끝에서 실패한 서버를 담아 예외를 던진다 (재시도 토픽으로)")
+    void 한_서버_전달이_실패해도_다른_서버에는_보내고_끝에서_예외를_던진다() {
+        // arrange
+        givenLocations(List.of("5", "9"), "ws://" + SERVER_1, "ws://" + SERVER_2);
+        lenient().doThrow(new RuntimeException("timeout")).when(chatServerClient).deliver(eq(CHAT_SERVER_1), any());
 
         // act
         DeliveryFailedException exception = catchThrowableOfType(
-            () -> chatMessageDeliveryService.deliver("message-1", chatMessage, List.of()), DeliveryFailedException.class);
+            () -> chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), List.of(5L, 9L)), DeliveryFailedException.class);
 
         // assert
-        assertDelivered(CHAT_SERVER_2, List.of(9L));
-        assertThat(exception.getFailedChatServers()).containsExactly("10.0.0.1:1111");
+        assertDelivered(CHAT_SERVER_2, List.of(List.of(9L)));
+        assertThat(exception.getFailedChatServers()).containsExactly(SERVER_1);
     }
 
     @Test
-    @DisplayName("success case : 살아있는 채팅 서버가 없으면 아무 데도 보내지 않는다")
-    void 살아있는_채팅_서버가_없으면_아무_데도_보내지_않는다() {
+    @DisplayName("success case : 접속한 멤버가 없으면 아무 데도 보내지 않는다")
+    void 접속한_멤버가_없으면_아무_데도_보내지_않는다() {
         // arrange
-        when(discoveryClient.getInstances("chatting")).thenReturn(List.of());
+        givenLocations(List.of("5", "9"), null, null);
 
         // act
-        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of());
+        chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), List.of(5L, 9L));
 
         // assert
         verify(chatServerClient, never()).deliver(any(), any());
@@ -127,80 +247,87 @@ class ChatMessageDeliveryServiceUnitTest {
     @DisplayName("success case : 확인된 첨부를 메시지와 함께 전달한다")
     void 확인된_첨부를_메시지와_함께_전달한다() {
         // arrange
-        givenChatServers(chatServer("10.0.0.1", 1111));
-        when(setOperations.intersect("chatServerUri:10.0.0.1:1111", "channel:7:members")).thenReturn(Set.of("5"));
+        givenLocations(List.of("5"), "ws://" + SERVER_1);
 
         // act
         chatMessageDeliveryService.deliver("message-1", chatMessage,
-            List.of(new Attachment("6acc66675f99715e286f0f6e", "사진.png", "image/png", 10L)));
+            List.of(new Attachment("6acc66675f99715e286f0f6e", "사진.png", "image/png", 10L)), List.of(5L));
 
         // assert
         ArgumentCaptor<ChatMessageDelivery> captor = ArgumentCaptor.forClass(ChatMessageDelivery.class);
         verify(chatServerClient).deliver(eq(CHAT_SERVER_1), captor.capture());
-        assertThat(captor.getValue().getAttachmentsList()).hasSize(1);
+        assertThat(captor.getValue().getMessageId()).isEqualTo("message-1");
+        assertThat(captor.getValue().getChatMessage()).isEqualTo(chatMessage);
         assertThat(captor.getValue().getAttachments(0).getFileId()).isEqualTo("6acc66675f99715e286f0f6e");
         assertThat(captor.getValue().getAttachments(0).getName()).isEqualTo("사진.png");
-        assertThat(captor.getValue().getAttachments(0).getContentType()).isEqualTo("image/png");
         assertThat(captor.getValue().getAttachments(0).getSize()).isEqualTo(10L);
     }
 
     @Test
-    @DisplayName("success case : 리액션은 메시지와 같은 방법으로 고른 수신자에게 reactions 전체를 서버당 한 번 전달한다")
-    void 리액션은_메시지와_같은_방법으로_고른_수신자에게_reactions_전체를_서버당_한_번_전달한다() {
+    @DisplayName("success case : 리액션은 같은 방법으로 고른 수신자에게 reactions 전체를 보내고, 실패하면 예외를 던진다")
+    void 리액션은_같은_방법으로_고른_수신자에게_reactions_전체를_보내고_실패하면_예외를_던진다() {
         // arrange
-        givenChatServers(chatServer("10.0.0.1", 1111), chatServer("10.0.0.2", 2222));
-        when(setOperations.intersect("chatServerUri:10.0.0.1:1111", "channel:7:members")).thenReturn(Set.of("5", "17"));
-        when(setOperations.intersect("chatServerUri:10.0.0.2:2222", "channel:7:members")).thenReturn(Set.of());
+        givenLocations(List.of("5", "17", "9"), "ws://" + SERVER_1, "ws://" + SERVER_1, "ws://" + SERVER_2);
+        // lenient : 다른 서버(1)로의 호출이 같은 스텁과 인자가 달라도 실패로 치지 않게
+        lenient().doThrow(new RuntimeException("timeout")).when(chatServerClient).deliverReaction(eq(CHAT_SERVER_2), any());
 
         // act
-        chatMessageDeliveryService.deliverReaction(7L, "message-1",
-            List.of(new Reaction("👍", List.of(5L, 17L)), new Reaction("🎉", List.of(5L))));
+        DeliveryFailedException exception = catchThrowableOfType(() -> chatMessageDeliveryService.deliverReaction(7L, "message-1",
+            List.of(new Reaction("👍", List.of(5L, 17L))), List.of(5L, 17L, 9L)), DeliveryFailedException.class);
 
         // assert
         ArgumentCaptor<ChatReactionDelivery> captor = ArgumentCaptor.forClass(ChatReactionDelivery.class);
         verify(chatServerClient).deliverReaction(eq(CHAT_SERVER_1), captor.capture());
-        verify(chatServerClient, never()).deliverReaction(eq(CHAT_SERVER_2), any());
-        ChatReactionDelivery delivery = captor.getValue();
-        assertThat(delivery.getMessageId()).isEqualTo("message-1");
-        assertThat(delivery.getChannelId()).isEqualTo(7L);
-        assertThat(delivery.getReceiveUserIdsList()).containsExactlyInAnyOrder(5L, 17L);
-        assertThat(delivery.getReactionsList()).extracting(r -> r.getEmoji()).containsExactly("👍", "🎉");
-        assertThat(delivery.getReactions(0).getUserIdsList()).containsExactly(5L, 17L);
+        assertThat(captor.getValue().getChannelId()).isEqualTo(7L);
+        assertThat(captor.getValue().getReceiveUserIdsList()).containsExactly(5L, 17L);
+        assertThat(captor.getValue().getReactions(0).getUserIdsList()).containsExactly(5L, 17L);
+        assertThat(exception.getFailedChatServers()).containsExactly(SERVER_2);
     }
 
-    @Test
-    @DisplayName("fail case : 리액션 전달이 한 서버에서 실패해도 나머지 서버에는 전달하고 끝에서 예외를 던진다")
-    void 리액션_전달이_한_서버에서_실패해도_나머지_서버에는_전달하고_끝에서_예외를_던진다() {
-        // arrange
-        givenChatServers(chatServer("10.0.0.1", 1111), chatServer("10.0.0.2", 2222));
-        when(setOperations.intersect("chatServerUri:10.0.0.1:1111", "channel:7:members")).thenReturn(Set.of("5"));
-        when(setOperations.intersect("chatServerUri:10.0.0.2:2222", "channel:7:members")).thenReturn(Set.of("9"));
-        doThrow(new RuntimeException("timeout")).when(chatServerClient).deliverReaction(eq(CHAT_SERVER_1), any());
-
-        // act
-        DeliveryFailedException exception = catchThrowableOfType(
-            () -> chatMessageDeliveryService.deliverReaction(7L, "message-1", List.of()), DeliveryFailedException.class);
-
-        // assert
-        verify(chatServerClient).deliverReaction(eq(CHAT_SERVER_2), any());
-        assertThat(exception.getFailedChatServers()).containsExactly("10.0.0.1:1111");
+    private void givenAliveChatServers(ServiceInstance... instances) {
+        lenient().when(discoveryClient.getInstances("chatting")).thenReturn(List.of(instances));
     }
 
-    private void givenChatServers(ServiceInstance... instances) {
-        when(discoveryClient.getInstances("chatting")).thenReturn(List.of(instances));
-        when(redisTemplate.opsForSet()).thenReturn(setOperations);
+    private void givenLocations(List<String> keys, Object... locations) {
+        when(valueOperations.multiGet(keys)).thenReturn(new ArrayList<>(java.util.Arrays.asList(locations)));
+    }
+
+    /**
+     * 모두 서버 1 에 접속. 500 명 이하는 MGET, 넘으면 파이프라인(500 개씩) 결과로 준다
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void givenLocationsOnServer1(List<Long> members) {
+        if (members.size() <= ChatMessageDeliveryService.LOCATION_LOOKUP_CHUNK) {
+            when(valueOperations.multiGet(members.stream().map(String::valueOf).toList()))
+                .thenReturn(new ArrayList<>(Collections.nCopies(members.size(), "ws://" + SERVER_1)));
+            return;
+        }
+        when(redisTemplate.getKeySerializer()).thenReturn((org.springframework.data.redis.serializer.RedisSerializer) StringRedisSerializer.UTF_8);
+        List<Object> results = new ArrayList<>();
+        for (List<Long> chunk : ChatMessageDeliveryService.chunks(members, ChatMessageDeliveryService.LOCATION_LOOKUP_CHUNK)) {
+            results.add(Collections.nCopies(chunk.size(), "ws://" + SERVER_1));
+        }
+        when(redisTemplate.executePipelined(any(RedisCallback.class))).thenReturn(results);
+    }
+
+    private static List<Long> memberIds(int count) {
+        return LongStream.rangeClosed(1, count).boxed().toList();
     }
 
     private ServiceInstance chatServer(String host, int port) {
         return new DefaultServiceInstance(host + ":" + port, "chatting", host, port, false);
     }
 
-    private void assertDelivered(URI chatServerUri, List<Long> receiveUserIds) {
+    private List<Integer> deliveredChunkSizes(URI chatServerUri) {
         ArgumentCaptor<ChatMessageDelivery> captor = ArgumentCaptor.forClass(ChatMessageDelivery.class);
-        verify(chatServerClient).deliver(eq(chatServerUri), captor.capture());
-        ChatMessageDelivery delivery = captor.getValue();
-        assertThat(delivery.getMessageId()).isEqualTo("message-1");
-        assertThat(delivery.getChatMessage()).isEqualTo(chatMessage);
-        assertThat(delivery.getReceiveUserIdsList()).containsExactlyInAnyOrderElementsOf(receiveUserIds);
+        verify(chatServerClient, org.mockito.Mockito.atLeastOnce()).deliver(eq(chatServerUri), captor.capture());
+        return captor.getAllValues().stream().map(ChatMessageDelivery::getReceiveUserIdsCount).toList();
+    }
+
+    private void assertDelivered(URI chatServerUri, List<List<Long>> receiverChunks) {
+        ArgumentCaptor<ChatMessageDelivery> captor = ArgumentCaptor.forClass(ChatMessageDelivery.class);
+        verify(chatServerClient, times(receiverChunks.size())).deliver(eq(chatServerUri), captor.capture());
+        assertThat(captor.getAllValues()).extracting(ChatMessageDelivery::getReceiveUserIdsList)
+            .containsExactlyElementsOf(receiverChunks);
     }
 }

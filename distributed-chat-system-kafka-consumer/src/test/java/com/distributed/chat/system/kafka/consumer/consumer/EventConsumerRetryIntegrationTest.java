@@ -11,17 +11,19 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.distributed.chat.system.kafka.consumer.base.kafka.DeadLetterHandler;
 import com.distributed.chat.system.kafka.consumer.service.ChatMessageDeliveryService;
 import com.distributed.chat.system.kafka.consumer.service.DeliveryFailedException;
 import com.distributed.chat.system.mongodb.repository.ChatMessageRepository;
+import com.distributed.chat.system.mysql.repository.ChannelUserRepository;
 import com.distributed.chat.system.mongodb.repository.ChatMessageSaveRepositoryImpl;
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -85,11 +87,21 @@ class EventConsumerRetryIntegrationTest {
     @MockBean
     private ChatMessageDeliveryService chatMessageDeliveryService;
 
+    @SpyBean
+    private DeadLetterHandler deadLetterHandler;
+
+    /**
+     * 여기서는 재시도 / DLT 만 본다. 채널 멤버(MySQL)는 고정 (멤버 확인 / 실제 전달 경로는 EventConsumerEndToEndIntegrationTest)
+     */
+    @MockBean
+    private ChannelUserRepository channelUserRepository;
+
     private KafkaTemplate<String, byte[]> kafkaTemplate;
     private final List<String> eventIds = new ArrayList<>();
 
     @BeforeEach
     void setup() {
+        org.mockito.Mockito.when(channelUserRepository.findMemberUserIds(org.mockito.ArgumentMatchers.anyLong())).thenReturn(List.of(5L, 1L));
         Map<String, Object> props = KafkaTestUtils.producerProps(embeddedKafkaBroker);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
@@ -110,36 +122,33 @@ class EventConsumerRetryIntegrationTest {
         doThrow(new IllegalStateException("mongo down 1")).doThrow(new IllegalStateException("mongo down 2"))
             .doAnswer(invocation -> saveRepository.saveOnce(invocation.getArgument(0)))
             .when(chatMessageRepository).saveOnce(argThat(message -> message != null && eventId.equals(message.getEventId())));
-        double retriesBefore = count("chat.consumer.retries", "topic", "chat-send-message");
 
         // when
         publish(eventId, "두 번 실패 후 성공");
 
         // then
-        await().atMost(WAIT).untilAsserted(() -> verify(chatMessageDeliveryService).deliver(anyString(), withEventId(eventId), any()));
+        await().atMost(WAIT).untilAsserted(() -> verify(chatMessageDeliveryService).deliver(anyString(), withEventId(eventId), any(), any()));
         assertThat(documents(eventId)).isEqualTo(1);
-        assertThat(count("chat.consumer.retries", "topic", "chat-send-message") - retriesBefore).isEqualTo(2);
-        verify(chatMessageDeliveryService, times(1)).deliver(anyString(), withEventId(eventId), any());
+        verify(chatMessageRepository, times(3)).saveOnce(argThat(message -> message != null && eventId.equals(message.getEventId())));
+        verify(chatMessageDeliveryService, times(1)).deliver(anyString(), withEventId(eventId), any(), any());
     }
 
     @Test
-    @DisplayName("fail case : 저장이 계속 실패하면 재시도를 다 쓰고 DLT 에 남고 dead letter 로 센다")
-    void 저장이_계속_실패하면_재시도를_다_쓰고_DLT_에_남고_dead_letter_로_센다() {
+    @DisplayName("fail case : 저장이 계속 실패하면 재시도를 다 쓰고 DLT 로 가서 dead letter 로 분류된다")
+    void 저장이_계속_실패하면_재시도를_다_쓰고_DLT_로_가서_dead_letter_로_분류된다() {
         // given
         String eventId = newEventId();
         doThrow(new IllegalStateException("mongo down"))
             .when(chatMessageRepository).saveOnce(argThat(message -> message != null && eventId.equals(message.getEventId())));
-        double deadLettersBefore = count("chat.consumer.dead.letters", "type", "message");
 
         // when
         publish(eventId, "항상 실패");
 
         // then
-        await().atMost(WAIT).untilAsserted(() ->
-            assertThat(count("chat.consumer.dead.letters", "type", "message") - deadLettersBefore).isEqualTo(1));
+        assertThat(dltOutcome(eventId)).isEqualTo(DeadLetterHandler.Outcome.DEAD_LETTER);
         assertThat(documents(eventId)).isZero();
         verify(chatMessageRepository, times(4)).saveOnce(argThat(message -> message != null && eventId.equals(message.getEventId())));
-        verify(chatMessageDeliveryService, times(0)).deliver(anyString(), withEventId(eventId), any());
+        verify(chatMessageDeliveryService, times(0)).deliver(anyString(), withEventId(eventId), any(), any());
     }
 
     @Test
@@ -155,7 +164,7 @@ class EventConsumerRetryIntegrationTest {
         // then
         ArgumentCaptor<String> messageIds = ArgumentCaptor.forClass(String.class);
         await().atMost(WAIT).untilAsserted(() ->
-            verify(chatMessageDeliveryService, times(2)).deliver(messageIds.capture(), withEventId(eventId), any()));
+            verify(chatMessageDeliveryService, times(2)).deliver(messageIds.capture(), withEventId(eventId), any(), any()));
         assertThat(messageIds.getAllValues()).hasSize(2).containsOnly(messageIds.getAllValues().get(0));
         assertThat(documents(eventId)).isEqualTo(1);
     }
@@ -166,7 +175,7 @@ class EventConsumerRetryIntegrationTest {
         // given
         String eventId = newEventId();
         doThrow(new DeliveryFailedException(List.of("10.0.0.1:1111"))).doNothing()
-            .when(chatMessageDeliveryService).deliver(anyString(), withEventId(eventId), any());
+            .when(chatMessageDeliveryService).deliver(anyString(), withEventId(eventId), any(), any());
 
         // when
         publish(eventId, "전달 실패 후 성공");
@@ -174,62 +183,87 @@ class EventConsumerRetryIntegrationTest {
         // then
         ArgumentCaptor<String> messageIds = ArgumentCaptor.forClass(String.class);
         await().atMost(WAIT).untilAsserted(() ->
-            verify(chatMessageDeliveryService, times(2)).deliver(messageIds.capture(), withEventId(eventId), any()));
+            verify(chatMessageDeliveryService, times(2)).deliver(messageIds.capture(), withEventId(eventId), any(), any()));
         assertThat(messageIds.getAllValues()).containsOnly(messageIds.getAllValues().get(0));
         assertThat(documents(eventId)).isEqualTo(1);
         verify(chatMessageRepository, atLeast(2)).saveOnce(argThat(message -> message != null && eventId.equals(message.getEventId())));
     }
 
     @Test
-    @DisplayName("fail case : 전달이 계속 실패하면 DLT 에서 저장된 것을 확인하고 전달 버림으로 센다")
-    void 전달이_계속_실패하면_DLT_에서_저장된_것을_확인하고_전달_버림으로_센다() {
+    @DisplayName("fail case : 전달이 계속 실패하면 DLT 에서 저장된 것을 확인하고 전달 버림으로 분류된다")
+    void 전달이_계속_실패하면_DLT_에서_저장된_것을_확인하고_전달_버림으로_분류된다() {
         // given
         String eventId = newEventId();
         doThrow(new DeliveryFailedException(List.of("10.0.0.1:1111")))
-            .when(chatMessageDeliveryService).deliver(anyString(), withEventId(eventId), any());
-        double droppedBefore = count("chat.consumer.delivery.dropped", "type", "message");
-        double deadLettersBefore = count("chat.consumer.dead.letters", "type", "message");
+            .when(chatMessageDeliveryService).deliver(anyString(), withEventId(eventId), any(), any());
 
         // when
         publish(eventId, "전달 계속 실패");
 
         // then
-        await().atMost(WAIT).untilAsserted(() ->
-            assertThat(count("chat.consumer.delivery.dropped", "type", "message") - droppedBefore).isEqualTo(1));
-        assertThat(count("chat.consumer.dead.letters", "type", "message") - deadLettersBefore).isZero();
+        assertThat(dltOutcome(eventId)).isEqualTo(DeadLetterHandler.Outcome.DELIVERY_DROPPED);
+        verify(chatMessageDeliveryService, times(4)).deliver(anyString(), withEventId(eventId), any(), any());
         assertThat(documents(eventId)).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("fail case : 리액션 전달이 계속 실패하면 재시도 뒤 DLT 에서 전달 버림으로 센다 (갱신은 그대로 한 번)")
-    void 리액션_전달이_계속_실패하면_재시도_뒤_DLT_에서_전달_버림으로_센다() {
+    @DisplayName("fail case : 리액션 전달이 계속 실패하면 재시도 뒤 DLT 에서 전달 버림으로 분류된다 (갱신은 그대로 한 번)")
+    void 리액션_전달이_계속_실패하면_재시도_뒤_DLT_에서_전달_버림으로_분류된다() {
         // given
         com.distributed.chat.system.mongodb.collection.ChatMessage target = chatMessageRepository.saveOnce(
             com.distributed.chat.system.mongodb.collection.ChatMessage.builder().eventId(newEventId()).channelId(7L)
                 .content("리액션 대상").createUserId(1L).build());
         String messageId = target.getId().toHexString();
         doThrow(new DeliveryFailedException(List.of("10.0.0.1:1111")))
-            .when(chatMessageDeliveryService).deliverReaction(eq(7L), eq(messageId), any());
-        double droppedBefore = count("chat.consumer.delivery.dropped", "type", "reaction");
+            .when(chatMessageDeliveryService).deliverReaction(eq(7L), eq(messageId), any(), any());
 
         // when
         kafkaTemplate.send("chat-reaction", "7", ChatReaction.newBuilder().setSendUserId(5L).setChannelId(7L)
             .setMessageId(messageId).setEmoji("👍").setAction(ChatReaction.Action.ADD).build().toByteArray()).join();
 
         // then
-        await().atMost(WAIT).untilAsserted(() ->
-            assertThat(count("chat.consumer.delivery.dropped", "type", "reaction") - droppedBefore).isEqualTo(1));
-        verify(chatMessageDeliveryService, times(4)).deliverReaction(eq(7L), eq(messageId), any());
+        ArgumentCaptor<ConsumerRecord<String, byte[]>> dlt = dltRecords();
+        ConsumerRecord<String, byte[]> record = dlt.getAllValues().stream()
+            .filter(candidate -> candidate.topic().equals("chat-reaction-dlt")).findFirst().orElseThrow();
+        assertThat(deadLetterHandler.classify(record)).isEqualTo(DeadLetterHandler.Outcome.DELIVERY_DROPPED);
+        verify(chatMessageDeliveryService, times(4)).deliverReaction(eq(7L), eq(messageId), any(), any());
         assertThat(chatMessageRepository.findById(target.getId()).orElseThrow().getReactions())
             .containsExactly(new com.distributed.chat.system.mongodb.collection.ChatMessage.Reaction("👍", List.of(5L)));
     }
 
     @Test
-    @DisplayName("success case : Kafka 컨슈머 클라이언트 메트릭(lag 등)이 메트릭 레지스트리에 붙어 있다")
+    @DisplayName("success case : Kafka 컨슈머 클라이언트 기본 메트릭(lag 등)이 메트릭 레지스트리에 붙어 있다 (/actuator/prometheus)")
     void Kafka_컨슈머_클라이언트_메트릭이_메트릭_레지스트리에_붙어_있다() {
         // when & then
         await().atMost(WAIT).untilAsserted(() ->
             assertThat(meterRegistry.find("kafka.consumer.fetch.manager.records.lag.max").meters()).isNotEmpty());
+    }
+
+    /**
+     * DLT 핸들러가 받은 그 eventId 레코드 (DLT 토픽에서 왔는지 확인) 의 분류
+     */
+    private DeadLetterHandler.Outcome dltOutcome(String eventId) {
+        ArgumentCaptor<ConsumerRecord<String, byte[]>> dlt = dltRecords();
+        ConsumerRecord<String, byte[]> record = dlt.getAllValues().stream()
+            .filter(candidate -> eventId.equals(parse(candidate).getEventId()))
+            .findFirst().orElseThrow();
+        assertThat(record.topic()).isEqualTo("chat-send-message-dlt");
+        return deadLetterHandler.classify(record);
+    }
+
+    @SuppressWarnings("unchecked")
+    private ArgumentCaptor<ConsumerRecord<String, byte[]>> dltRecords() {
+        ArgumentCaptor<ConsumerRecord<String, byte[]>> captor = ArgumentCaptor.forClass(ConsumerRecord.class);
+        await().atMost(WAIT).untilAsserted(() -> verify(deadLetterHandler, atLeast(1)).handle(captor.capture()));
+        return captor;
+    }
+
+    private static ChatMessage parse(ConsumerRecord<String, byte[]> record) {
+        try {
+            return ChatMessage.parseFrom(record.value());
+        } catch (Exception e) {
+            return ChatMessage.getDefaultInstance();
+        }
     }
 
     private ChatMessage withEventId(String eventId) {
@@ -244,11 +278,6 @@ class EventConsumerRetryIntegrationTest {
 
     private long documents(String eventId) {
         return mongoTemplate.count(Query.query(Criteria.where("eventId").is(eventId)), "chatMessage");
-    }
-
-    private double count(String name, String tagKey, String tagValue) {
-        Counter counter = meterRegistry.find(name).tag(tagKey, tagValue).counter();
-        return counter == null ? 0 : counter.count();
     }
 
     private String newEventId() {

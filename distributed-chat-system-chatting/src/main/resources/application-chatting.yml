@@ -8,11 +8,12 @@ spring:
 
 eureka:
   client:
+    registry-fetch-interval-seconds: 5 # 다른 채팅 서버가 살아 있는지 빨리 반영 (default 30s)
     service-url:
       defaultZone: http://localhost:7710/eureka/
 
   instance:
-    prefer-ip-address: true # 컨슈머가 Eureka 의 ip:port 로 Redis 키(chatServerUri:{ip}:{port})를 찾는다
+    prefer-ip-address: true # Redis {userId} 값(ws://ip:port)을 Eureka 의 ip:port 와 맞춰 살아 있는 서버인지 본다
     instance-id: ${spring.cloud.client.hostname}:${spring.application.instance_id:${random.value}}
 #      lease-renewal-interval-in-seconds: 5 # 하트비트가 수신되지 않으면 서비스 등록 해제 (default: 30s)
 #      lease-expiration-duration-in-seconds: 15 # 하트비트가 수신되지 않으면 서비스 등록 해제 (default: 90s)
@@ -29,6 +30,7 @@ spring:
 
 eureka:
   client:
+    registry-fetch-interval-seconds: 5 # 다른 채팅 서버가 살아 있는지 빨리 반영 (default 30s)
     service-url:
       defaultZone: http://service-discovery:7710/eureka/
 

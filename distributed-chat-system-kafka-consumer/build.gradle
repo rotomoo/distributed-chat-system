@@ -1,6 +1,7 @@
 dependencies {
     implementation project(':common:distributed-chat-system-common')
     implementation project(':infra:distributed-chat-system-mongodb')
+    implementation project(':infra:distributed-chat-system-mysql')
 
     // kafka
     implementation 'org.springframework.kafka:spring-kafka'
@@ -8,6 +9,10 @@ dependencies {
     // mongodb
     compileOnly('org.springframework.boot:spring-boot-starter-data-mongodb')
     testImplementation('org.springframework.boot:spring-boot-starter-data-mongodb')
+
+    // mysql : 채널 멤버 (channel_user) 원본
+    compileOnly('org.springframework.boot:spring-boot-starter-data-jpa')
+    testImplementation('org.springframework.boot:spring-boot-starter-data-jpa')
 
     // redis
     implementation('org.springframework.boot:spring-boot-starter-data-redis')

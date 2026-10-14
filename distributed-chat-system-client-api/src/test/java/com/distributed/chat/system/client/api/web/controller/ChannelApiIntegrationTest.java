@@ -7,7 +7,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.distributed.chat.system.client.api.base.cache.ChannelMemberCache;
 import com.distributed.chat.system.mongodb.collection.ChatMessage;
 import com.distributed.chat.system.mongodb.repository.ChatMessageRepository;
 import com.distributed.chat.system.mysql.entity.User;
@@ -36,7 +35,11 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 
 @DisplayName("[통합] 팀 / 채널 / DM API 테스트")
 // 테스트 JVM 이 실행 중인 스택의 Eureka 에 등록되면 게이트웨이가 실제 요청을 테스트로 보낼 수 있으므로 끈다
-@SpringBootTest(properties = "eureka.client.enabled=false")
+// 살아 있는 채팅 서버는 Eureka 대신 simple discovery 로 하나 둔다 (접속 상태 online 확인용)
+@SpringBootTest(properties = {
+    "eureka.client.enabled=false",
+    "spring.cloud.discovery.client.simple.instances.chatting[0].uri=http://10.255.255.1:40001"
+})
 @AutoConfigureMockMvc
 @Transactional
 class ChannelApiIntegrationTest {
@@ -218,25 +221,6 @@ class ChannelApiIntegrationTest {
         mockMvc.perform(as(bob, get("/v1/private/api/channel/" + channelId + "/messages")))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.code").value(3003));
-    }
-
-    @Test
-    @DisplayName("success case : 채널 멤버 캐시가 비면 내부 API 로 MySQL 기준으로 다시 채운다")
-    void 채널_멤버_캐시가_비면_내부_API_로_MySQL_기준으로_다시_채운다() throws Exception {
-        // given
-        Long teamId = createTeam(alice, uniqueTeamName());
-        Long channelId = createChannel(alice, teamId, "cache");
-        redisTemplate.delete(ChannelMemberCache.key(channelId));
-
-        // when
-        mockMvc.perform(get("/internal/channel/" + channelId + "/members"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$").value(Matchers.contains(alice.intValue())));
-
-        // then
-        org.assertj.core.api.Assertions.assertThat(
-            redisTemplate.opsForSet().isMember(ChannelMemberCache.key(channelId), String.valueOf(alice))).isTrue();
-        redisTemplate.delete(ChannelMemberCache.key(channelId));
     }
 
     @Test
@@ -458,19 +442,16 @@ class ChannelApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("success case : 팀 멤버 목록에 지금 채팅 서버에 연결된 사람만 online 으로 표시한다")
-    void 팀_멤버_목록에_지금_채팅_서버에_연결된_사람만_online_으로_표시한다() throws Exception {
+    @DisplayName("success case : 팀 멤버 목록에 살아 있는 채팅 서버에 연결된 사람만 online 으로 표시한다")
+    void 팀_멤버_목록에_살아_있는_채팅_서버에_연결된_사람만_online_으로_표시한다() throws Exception {
         // given
         Long teamId = createTeam(alice, uniqueTeamName());
         mockMvc.perform(as(bob, post("/v1/private/api/team/" + teamId + "/join"))).andExpect(status().isOk());
         mockMvc.perform(as(carol, post("/v1/private/api/team/" + teamId + "/join"))).andExpect(status().isOk());
-        String chatServer = "10.255.255.1:" + (40000 + (int) (Math.random() * 20000));
-        String chatServerKey = "chatServerUri:" + chatServer;
-        redisKeys.addAll(List.of(String.valueOf(bob), String.valueOf(carol), chatServerKey));
-        // 채팅 서버가 쓰는 모양 그대로 : bob 은 연결 중, carol 은 끊김(라우팅 키만 남음), alice 는 키 없음
-        redisTemplate.opsForValue().set(String.valueOf(bob), "ws://" + chatServer);
-        redisTemplate.opsForValue().set(String.valueOf(carol), "ws://" + chatServer);
-        redisTemplate.opsForSet().add(chatServerKey, String.valueOf(bob));
+        redisKeys.addAll(List.of(String.valueOf(bob), String.valueOf(carol)));
+        // 채팅 서버가 쓰는 모양 그대로 : bob 은 살아 있는 서버, carol 은 죽은 서버(Eureka 에 없음)를 가리킴, alice 는 키 없음
+        redisTemplate.opsForValue().set(String.valueOf(bob), "ws://10.255.255.1:40001");
+        redisTemplate.opsForValue().set(String.valueOf(carol), "ws://10.255.255.2:40002");
 
         // when & then
         mockMvc.perform(as(alice, get("/v1/private/api/team/" + teamId + "/members")))

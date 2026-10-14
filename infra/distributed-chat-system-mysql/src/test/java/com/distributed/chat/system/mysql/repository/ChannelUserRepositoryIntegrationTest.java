@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.distributed.chat.system.mysql.entity.ChannelUser;
 import com.distributed.chat.system.mysql.pk.ChannelUserPk;
 import jakarta.transaction.Transactional;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -91,6 +92,22 @@ class ChannelUserRepositoryIntegrationTest {
         assertThat(left).isZero();
         assertThat(notMember).isZero();
         assertThat(lastRead()).isNull();
+    }
+
+    @Test
+    @DisplayName("success case : 채널 멤버 ID 는 나가지 않은 멤버만 돌려준다")
+    void 채널_멤버_ID_는_나가지_않은_멤버만_돌려준다() {
+        // given
+        saveMember(null, false);
+        channelUserRepository.saveAndFlush(ChannelUser.builder().channelId(channelId).userId(userId + 1).deleteYn(false).build());
+        channelUserRepository.saveAndFlush(ChannelUser.builder().channelId(channelId).userId(userId + 2).deleteYn(true).build());
+        channelUserRepository.saveAndFlush(ChannelUser.builder().channelId(channelId + 1).userId(userId + 3).deleteYn(false).build());
+
+        // when
+        List<Long> memberIds = channelUserRepository.findMemberUserIds(channelId);
+
+        // then
+        assertThat(memberIds).containsExactlyInAnyOrder(userId, userId + 1);
     }
 
     private void saveMember(String lastReadMessageId, boolean deleted) {
