@@ -10,7 +10,6 @@ import com.distributed.chat.system.mysql.repository.UserRepository;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -19,8 +18,6 @@ import org.springframework.stereotype.Service;
 public class UserService {
 
     private final UserRepository userRepository;
-
-    private final RedisTemplate redisTemplate;
 
     /**
      * 내 정보 조회
@@ -36,9 +33,6 @@ public class UserService {
             throw new ApiException(ErrorCode.NOT_EXIST_USER_INFO);
         }
 
-        User user = foundUser.get();
-        String chatServerUrl = (String) redisTemplate.opsForValue().get(String.valueOf(loginId));
-
-        return ResponseData.success("내 정보 조회", new GetMyInfoResponseDto(user, chatServerUrl));
+        return ResponseData.success("내 정보 조회", new GetMyInfoResponseDto(foundUser.get()));
     }
 }

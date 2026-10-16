@@ -14,14 +14,11 @@ public class GetMyInfoResponseDto {
     private String userName;
     private String account;
     private Boolean deleteYn;
-    private String chatServerUrl;
 
-    public GetMyInfoResponseDto(User user,
-        String chatServerUrl) {
+    public GetMyInfoResponseDto(User user) {
         this.userId = user.getId();
         this.userName = user.getUserName();
         this.account = user.getAccount();
         this.deleteYn = user.getDeleteYn();
-        this.chatServerUrl = chatServerUrl;
     }
 }
