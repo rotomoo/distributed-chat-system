@@ -1,4 +1,4 @@
-package com.distributed.chat.system.connection.status.web.dto.presence;
+package com.distributed.chat.system.client.api.web.dto.presence;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;

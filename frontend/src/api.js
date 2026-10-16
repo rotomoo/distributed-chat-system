@@ -95,7 +95,7 @@ export function getTeamMembers(teamId) {
   return list(`${PRIVATE}/team/${teamId}/members`)
 }
 
-// 팀 멤버 접속 상태 (connection-status 서버) [{ userId, status: online | away | offline }].
+// 팀 멤버 접속 상태 (client-api) [{ userId, status: online | away | offline }].
 // 서버가 없거나 실패하면 빈 배열 → 모두 오프라인으로 보인다
 export function getPresence(teamId) {
   return list(`${PRIVATE}/presence?teamId=${teamId}`)

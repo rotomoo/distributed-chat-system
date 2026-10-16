@@ -39,7 +39,7 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
  * <ul>
  *   <li>서버 메모리 : userId → { 웹소켓 세션ID → 세션 } (기기마다 소켓이 따로 있으므로 모두 보관)</li>
  *   <li>Redis {@code {userId}} = {server, status}, TTL 60초 ({@link UserLocationRegistry}) : 그 유저의 기기들이 모인 채팅 서버와 접속 상태.
- *       server 는 컨슈머 / api-gateway, status 는 connection-status 가 읽는다.
+ *       server 는 컨슈머 / api-gateway, status 는 client-api 가 읽는다.
  *       기기별 상태(active / away)는 이 서버 메모리에 두고, 기기 하나라도 active 면 online, 모두 away 면 away 로 합쳐서 쓴다</li>
  * </ul>
  * 서버 안의 경쟁(같은 유저의 동시 접속/해제)은 {@link ConcurrentHashMap#compute} 로 유저 단위 직렬화한다.

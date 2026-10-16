@@ -1,4 +1,4 @@
-package com.distributed.chat.system.connection.status.web.service;
+package com.distributed.chat.system.client.api.web.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
@@ -13,7 +13,7 @@ import static org.mockito.Mockito.when;
 import com.distributed.chat.system.common.exception.ApiException;
 import com.distributed.chat.system.common.exception.ErrorCode;
 import com.distributed.chat.system.common.response.ResponseData;
-import com.distributed.chat.system.connection.status.web.dto.presence.UserPresenceDto;
+import com.distributed.chat.system.client.api.web.dto.presence.UserPresenceDto;
 import com.distributed.chat.system.mysql.entity.TeamUser;
 import com.distributed.chat.system.mysql.repository.TeamUserRepository;
 import java.util.Arrays;

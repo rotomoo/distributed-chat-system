@@ -19,6 +19,8 @@ dependencies {
     // redis
     compileOnly('org.springframework.boot:spring-boot-starter-data-redis')
     testImplementation('org.springframework.boot:spring-boot-starter-data-redis')
+    // 통합 테스트에서 로그인 세션(Spring Session)을 직접 만든다
+    testImplementation('org.springframework.session:spring-session-data-redis')
 
     // eureka-client
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'

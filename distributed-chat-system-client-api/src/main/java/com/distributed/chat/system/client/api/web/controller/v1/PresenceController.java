@@ -1,8 +1,8 @@
-package com.distributed.chat.system.connection.status.web.controller.v1;
+package com.distributed.chat.system.client.api.web.controller.v1;
 
 import com.distributed.chat.system.common.response.ResponseData;
-import com.distributed.chat.system.connection.status.web.controller.v1.spec.PresenceControllerSpec;
-import com.distributed.chat.system.connection.status.web.service.PresenceService;
+import com.distributed.chat.system.client.api.web.controller.v1.spec.PresenceControllerSpec;
+import com.distributed.chat.system.client.api.web.service.PresenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;

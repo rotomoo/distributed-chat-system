@@ -175,7 +175,7 @@ public class TeamServiceUnitTest {
     }
 
     @Test
-    @DisplayName("success case : 팀 멤버 목록은 userId 순으로 이름만 준다 (접속 상태는 connection-status 가 준다)")
+    @DisplayName("success case : 팀 멤버 목록은 userId 순으로 이름만 준다 (접속 상태는 접속 상태 API 가 준다)")
     void 팀_멤버_목록은_userId_순으로_이름만_준다() {
         // arrange
         when(teamUserRepository.existsByTeamIdAndUserIdAndDeleteYnIsFalse(10L, LOGIN_ID)).thenReturn(true);

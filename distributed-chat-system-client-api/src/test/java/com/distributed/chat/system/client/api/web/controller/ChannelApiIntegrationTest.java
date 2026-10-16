@@ -438,7 +438,7 @@ class ChannelApiIntegrationTest {
         Long teamId = createTeam(alice, uniqueTeamName());
         mockMvc.perform(as(bob, post("/v1/private/api/team/" + teamId + "/join"))).andExpect(status().isOk());
 
-        // when & then : 접속 상태는 connection-status 서버 한 곳에서만 준다
+        // when & then : 접속 상태는 접속 상태 API(GET /v1/private/api/presence) 한 곳에서만 준다
         mockMvc.perform(as(alice, get("/v1/private/api/team/" + teamId + "/members")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.list[*].userId").value(Matchers.contains(alice.intValue(), bob.intValue())))

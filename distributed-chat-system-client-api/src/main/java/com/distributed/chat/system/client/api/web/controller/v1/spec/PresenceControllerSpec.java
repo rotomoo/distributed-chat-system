@@ -1,4 +1,4 @@
-package com.distributed.chat.system.connection.status.web.controller.v1.spec;
+package com.distributed.chat.system.client.api.web.controller.v1.spec;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;

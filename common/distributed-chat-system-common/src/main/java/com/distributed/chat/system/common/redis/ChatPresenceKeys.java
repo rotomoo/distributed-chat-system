@@ -8,11 +8,11 @@ import java.util.Map;
 
 /**
  * 채팅 서버 접속 정보 Redis 키 모양. 유저당 키 하나에 "어느 서버에 붙었나" 와 "접속 상태" 를 함께 둔다.
- * 쓰는 쪽은 채팅 서버 하나뿐이고 consumer / api-gateway / connection-status 는 읽기만 한다
+ * 쓰는 쪽은 채팅 서버 하나뿐이고 consumer / api-gateway / client-api 는 읽기만 한다
  * <ul>
  *   <li>{@code {userId}} → {@code {"server":"ws://ip:port","status":"online"|"away"}}, TTL 60초</li>
  *   <li>server : 그 유저의 기기들이 모여 있는 채팅 서버 (유저 하나 = 서버 하나). consumer 가 전달 대상을, api-gateway 가 라우팅을 정한다</li>
- *   <li>status : 기기 하나라도 active 면 online, 모두 away 면 away. connection-status 가 읽는다</li>
+ *   <li>status : 기기 하나라도 active 면 online, 모두 away 면 away. client-api 접속 상태 API 가 읽는다</li>
  *   <li>키가 없으면 offline. 채팅 서버가 갑자기 죽어도 TTL 이 지나면 위치와 상태가 함께 사라진다.
  *       TTL 전이라도 server 가 Eureka 에 없으면(죽은 서버) consumer / api-gateway 는 오프라인으로 본다 ({@link ChatServers})</li>
  * </ul>

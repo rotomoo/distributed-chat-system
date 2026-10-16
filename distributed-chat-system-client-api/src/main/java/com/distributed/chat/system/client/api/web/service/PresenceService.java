@@ -1,11 +1,11 @@
-package com.distributed.chat.system.connection.status.web.service;
+package com.distributed.chat.system.client.api.web.service;
 
 import com.distributed.chat.system.common.exception.ApiException;
 import com.distributed.chat.system.common.exception.ErrorCode;
 import com.distributed.chat.system.common.redis.ChatPresenceKeys;
 import com.distributed.chat.system.common.response.ResponseData;
-import com.distributed.chat.system.connection.status.base.security.SecurityUtil;
-import com.distributed.chat.system.connection.status.web.dto.presence.UserPresenceDto;
+import com.distributed.chat.system.client.api.base.security.SecurityUtil;
+import com.distributed.chat.system.client.api.web.dto.presence.UserPresenceDto;
 import com.distributed.chat.system.mysql.entity.TeamUser;
 import com.distributed.chat.system.mysql.repository.TeamUserRepository;
 import java.util.ArrayList;
@@ -16,7 +16,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 /**
- * 팀 멤버 접속 상태 조회. 접속 상태를 읽는 곳은 이 서버 하나 (쓰는 쪽은 채팅 서버, Redis {userId} = {server, status})
+ * 팀 멤버 접속 상태 조회. 접속 상태를 읽는 API 는 여기 하나 (쓰는 쪽은 채팅 서버, Redis {userId} = {server, status})
  * <ul>
  *   <li>팀 멤버 : MySQL team_user 1번 (로그인 사용자가 그 안에 없으면 2003)</li>
  *   <li>접속 상태 : 멤버 전체를 MGET 1번, status 만 본다. 키가 없으면 offline (채팅 서버가 죽어도 TTL 60초 뒤 사라진다).

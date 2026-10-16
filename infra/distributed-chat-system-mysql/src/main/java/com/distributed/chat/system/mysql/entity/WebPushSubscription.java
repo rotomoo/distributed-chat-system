@@ -52,6 +52,6 @@ public class WebPushSubscription extends BaseTimeEntity {
     @Column(columnDefinition = "varchar(255) not null comment '브라우저 공개키 (base64url, P-256)'")
     private String p256dh;
 
-    @Column(columnDefinition = "varchar(255) not null comment '인증 비밀값 (base64url)'")
+    @Column(columnDefinition = "varchar(255) not null comment '인증 secret (base64url)'")
     private String auth;
 }

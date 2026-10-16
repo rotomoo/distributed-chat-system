@@ -115,7 +115,7 @@ describe('[단위] api', () => {
     expect(channels).toEqual([])
   })
 
-  it('success case : 접속 상태는 connection-status 의 presence?teamId= 로 조회한다', async () => {
+  it('success case : 접속 상태는 presence?teamId= 로 조회한다', async () => {
     // arrange
     const list = [{ userId: 1, status: 'online' }, { userId: 2, status: 'away' }]
     fetch.mockResolvedValue(ok({ list }))

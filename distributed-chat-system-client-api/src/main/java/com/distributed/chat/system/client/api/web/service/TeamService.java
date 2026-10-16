@@ -122,7 +122,7 @@ public class TeamService {
     }
 
     /**
-     * 팀 멤버 목록 (DM 상대 고르기). 접속 상태는 connection-status 서버가 따로 준다 (GET /v1/private/api/presence)
+     * 팀 멤버 목록 (DM 상대 고르기). 접속 상태는 PresenceService 가 따로 준다 (GET /v1/private/api/presence)
      */
     public ResponseData getTeamMembers(Long teamId) {
         Long loginId = SecurityUtil.getLoginId();

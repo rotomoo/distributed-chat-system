@@ -1,4 +1,4 @@
-package com.distributed.chat.system.connection.status.web.controller;
+package com.distributed.chat.system.client.api.web.controller;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;

@@ -19,8 +19,6 @@ include 'distributed-chat-system-chatting'
 
 include 'distributed-chat-system-client-api'
 
-include 'distributed-chat-system-connection-status'
-
 include 'distributed-chat-system-kafka-consumer'
 
 include 'distributed-chat-system-kafka-producer'
