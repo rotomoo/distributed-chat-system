@@ -191,7 +191,7 @@ class CustomTextWebSocketHandlerUnitTest {
     @Test
     @DisplayName("success case : 마지막 기기 끊김과 새 기기 접속이 경쟁해도 Redis 접속 정보와 서버 메모리가 일치한다")
     void 마지막_기기_끊김과_새_기기_접속이_경쟁해도_Redis_접속_정보와_서버_메모리가_일치한다() throws Exception {
-        // arrange : Redis {userId} 를 값 하나로 흉내 낸다 (claim = 이 서버로 SET, release = 이 서버일 때만 DEL)
+        // arrange : Redis {userId} 대신 AtomicReference 하나를 쓴다 (claim = 이 서버로 SET, release = 이 서버일 때만 DEL)
         //           release 에 1ms 지연을 줘서 "메모리에서는 뺐는데 Redis 는 아직 안 지운" 틈을 넓힌다 (실제 네트워크 왕복)
         AtomicReference<String> location = new AtomicReference<>();
         doAnswer(invocation -> {
@@ -558,7 +558,7 @@ class CustomTextWebSocketHandlerUnitTest {
     @Test
     @DisplayName("success case : 여러 기기가 동시에 away / active 를 보내도 마지막에 쓴 상태가 메모리의 합친 상태와 같다")
     void 여러_기기가_동시에_away_active_를_보내도_마지막에_쓴_상태가_합친_상태와_같다() throws Exception {
-        // arrange : Redis presence:{userId} 를 값 하나로 흉내 낸다
+        // arrange : Redis {userId} 의 status 대신 AtomicReference 하나를 쓴다
         AtomicReference<String> presence = new AtomicReference<>();
         doAnswer(invocation -> {
             Thread.sleep(1);

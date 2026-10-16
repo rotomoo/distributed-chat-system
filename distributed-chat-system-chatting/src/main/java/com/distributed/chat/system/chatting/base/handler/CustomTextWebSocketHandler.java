@@ -38,8 +38,8 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
  * 한 유저가 여러 기기(PC, 폰, 탭)로 동시에 접속할 수 있다.
  * <ul>
  *   <li>서버 메모리 : userId → { 웹소켓 세션ID → 세션 } (기기마다 소켓이 따로 있으므로 모두 보관)</li>
- *   <li>Redis {@code {userId}} : 그 유저의 기기들이 모인 채팅 서버 ({@link UserLocationRegistry}). 컨슈머 / api-gateway 가 읽는다</li>
- *   <li>Redis {@code presence:{userId}} : 접속 상태 online / away (TTL 60초). connection-status 가 읽는다.
+ *   <li>Redis {@code {userId}} = {server, status}, TTL 60초 ({@link UserLocationRegistry}) : 그 유저의 기기들이 모인 채팅 서버와 접속 상태.
+ *       server 는 컨슈머 / api-gateway, status 는 connection-status 가 읽는다.
  *       기기별 상태(active / away)는 이 서버 메모리에 두고, 기기 하나라도 active 면 online, 모두 away 면 away 로 합쳐서 쓴다</li>
  * </ul>
  * 서버 안의 경쟁(같은 유저의 동시 접속/해제)은 {@link ConcurrentHashMap#compute} 로 유저 단위 직렬화한다.
@@ -65,7 +65,7 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
     private static final TextMessage PING = new TextMessage("{\"type\":\"ping\"}");
 
     /**
-     * 받는 프레임마다 접속 상태 TTL(60초)을 갱신하되 유저당 이 주기에 1번만 쓴다 (하트비트 pong 이 25초마다 오므로 TTL 안에 2번 이상 갱신된다)
+     * 받는 프레임마다 접속 정보 키 TTL(60초)을 갱신하되 유저당 이 주기에 1번만 쓴다 (하트비트 pong 이 25초마다 오므로 TTL 안에 2번 이상 갱신된다)
      */
     static final Duration PRESENCE_REFRESH_INTERVAL = Duration.ofSeconds(20);
 
@@ -141,7 +141,7 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
      *   <li>{"type": "presence", "state": "away" | "active"} : 이 기기의 상태 (입력 없음 → away, 다시 움직이면 active)</li>
      *   <li>{"type": "pong"} : 하트비트 응답</li>
      * </ul>
-     * 어떤 프레임이든 받으면 살아 있는 것 → 마지막 수신 시각과 접속 상태 TTL 을 갱신한다.
+     * 어떤 프레임이든 받으면 살아 있는 것 → 마지막 수신 시각과 접속 정보 키 TTL 을 갱신한다.
      * 형식이 틀리면 보낸 사람에게 {"type": "error", ...} 를 돌려주고 발행하지 않는다 (채널 멤버 확인은 컨슈머가 한다)
      */
     @Override
@@ -281,7 +281,7 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         String presence = userSessions.presence();
         try {
             if (!userLocationRegistry.writePresence(userId, chatServerUri, presence)) {
-                // 위치 키가 이 서버가 아니다 (다른 서버로 넘어감). 상태는 그 서버가 쓴다
+                // {userId} 의 server 가 다른 서버다 (넘어감). 그 서버가 쓴다
                 log.info("userId : {} location is not {}, skip presence {}", userId, chatServerUri, presence);
             }
             userSessions.writtenPresence = presence;
@@ -347,7 +347,7 @@ public class CustomTextWebSocketHandler extends TextWebSocketHandler {
         String userId = (String) webSocketSession.getAttributes().get("userId");
         String chatServerUri = (String) webSocketSession.getAttributes().get("chatServerUri");
 
-        // 끊긴 기기만 뺀다. 이 서버에서 그 유저의 마지막 기기일 때만 Redis {userId}, presence:{userId} 를 지운다 (위치 값이 아직 이 서버일 때만)
+        // 끊긴 기기만 뺀다. 이 서버에서 그 유저의 마지막 기기일 때만 Redis {userId} 를 지운다 (server 가 아직 이 서버일 때만)
         this.webSocketSessionMap.computeIfPresent(userId, (key, userSessions) -> {
             if (userSessions.sessions.remove(webSocketSession.getId()) == null) {
                 return userSessions.sessions.isEmpty() ? null : userSessions;

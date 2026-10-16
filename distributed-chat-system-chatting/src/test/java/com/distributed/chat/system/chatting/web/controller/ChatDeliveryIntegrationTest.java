@@ -9,7 +9,6 @@ import com.distributed.chat.system.common.event.ChatMessageEvent;
 import com.distributed.chat.system.common.event.ChatReactionDelivery;
 import com.distributed.chat.system.common.event.ChatReactionDelivery.Reaction;
 import com.distributed.chat.system.common.event.EventJson;
-import com.distributed.chat.system.common.redis.ChatPresenceKeys;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -81,7 +80,6 @@ class ChatDeliveryIntegrationTest {
         }
         sessionIds.forEach(sessionRepository::deleteById);
         userIds.forEach(redisTemplate::delete);
-        userIds.forEach(userId -> redisTemplate.delete(ChatPresenceKeys.presenceKey(userId)));
     }
 
     @Test

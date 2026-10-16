@@ -1,6 +1,7 @@
 package com.distributed.chat.system.api.gateway.base.filter;
 
 import com.distributed.chat.system.common.redis.ChatPresenceKeys;
+import com.distributed.chat.system.common.redis.ChatPresenceKeys.ChatPresence;
 import com.distributed.chat.system.common.redis.ChatServers;
 import com.distributed.chat.system.common.exception.ApiException;
 import com.distributed.chat.system.common.exception.ErrorCode;
@@ -42,13 +43,14 @@ public class ChattingRoutingFilter extends AbstractGatewayFilterFactory<Object> 
                 .map(HttpCookie::getValue)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_EXIST_USER_INFO));
 
-            String chatServerUri = (String) Optional.ofNullable(
-                redisTemplate.opsForValue().get(ChatPresenceKeys.userKey(userId))).orElse(null);
+            // {userId} = {server, status} (예전 값 "ws://..." 도 읽는다). 키가 없으면(첫 접속 / 끊긴 지 오래 / 서버가 죽고 TTL 이 지남) null
+            ChatPresence presence = ChatPresenceKeys.parse(redisTemplate.opsForValue().get(ChatPresenceKeys.userKey(userId)));
+            String chatServerUri = presence == null ? null : presence.server();
 
             log.info("userId : {}, chatServerUri : {}", userId, chatServerUri);
 
             // 이미 접속한 서버가 살아 있을 때만 그 서버로 (유저 하나 = 서버 하나). 죽은 서버를 가리키면 로드밸런서에 맡긴다
-            if (chatServerUri != null && !ChatServers.alive(discoveryClient).contains(ChatPresenceKeys.chatServerOf(chatServerUri))) {
+            if (chatServerUri != null && !ChatServers.alive(discoveryClient).contains(presence.chatServer())) {
                 log.info("userId : {}, chatServerUri : {} is dead, fall back to load balancer", userId, chatServerUri);
                 chatServerUri = null;
             }

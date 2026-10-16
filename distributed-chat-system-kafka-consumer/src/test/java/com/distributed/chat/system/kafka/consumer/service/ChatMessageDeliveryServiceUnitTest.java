@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -92,7 +93,7 @@ class ChatMessageDeliveryServiceUnitTest {
     @DisplayName("success case : 멤버 접속 위치를 MGET 한 번으로 읽어 채팅 서버별로 묶어 서버당 한 번씩 보낸다")
     void 멤버_접속_위치를_MGET_한_번으로_읽어_채팅_서버별로_묶어_서버당_한_번씩_보낸다() {
         // arrange
-        givenLocations(List.of("5", "9", "17"), "ws://" + SERVER_1, "ws://" + SERVER_2, "ws://" + SERVER_1);
+        givenLocations(List.of("5", "9", "17"), at(SERVER_1), at(SERVER_2), at(SERVER_1));
 
         // act
         chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), chatMessageDeliveryService.locate(List.of(5L, 9L, 17L)));
@@ -107,7 +108,7 @@ class ChatMessageDeliveryServiceUnitTest {
     @DisplayName("success case : 접속 위치가 없거나(앱 꺼짐) 죽은 서버(Eureka 에 없음)를 가리키면 오프라인이라 보내지 않는다")
     void 접속_위치가_없거나_죽은_서버를_가리키면_오프라인이라_보내지_않는다() {
         // arrange
-        givenLocations(List.of("5", "9", "17"), "ws://" + SERVER_1, null, "ws://10.0.0.9:9999");
+        givenLocations(List.of("5", "9", "17"), at(SERVER_1), null, at("10.0.0.9:9999"));
 
         // act
         chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), chatMessageDeliveryService.locate(List.of(5L, 9L, 17L)));
@@ -122,7 +123,7 @@ class ChatMessageDeliveryServiceUnitTest {
     @DisplayName("success case : 접속 위치가 없거나 죽은 서버를 가리키는 멤버는 오프라인 목록으로 돌려준다 (알림 대상)")
     void 접속_위치가_없거나_죽은_서버를_가리키는_멤버는_오프라인_목록으로_돌려준다() {
         // arrange
-        givenLocations(List.of("5", "9", "17", "21"), "ws://" + SERVER_1, null, "ws://10.0.0.9:9999", "ws://" + SERVER_2);
+        givenLocations(List.of("5", "9", "17", "21"), at(SERVER_1), null, at("10.0.0.9:9999"), at(SERVER_2));
 
         // act
         ChatReceivers receivers = chatMessageDeliveryService.locate(List.of(5L, 9L, 17L, 21L));
@@ -133,6 +134,22 @@ class ChatMessageDeliveryServiceUnitTest {
         assertThat(receivers.byChatServer().get(SERVER_1)).containsExactly(5L);
         assertThat(receivers.byChatServer().get(SERVER_2)).containsExactly(21L);
         verify(chatServerClient, never()).deliver(any(), any());
+    }
+
+    @Test
+    @DisplayName("success case : away 인 멤버도 접속해 있으므로 보내고, 예전 값(서버 주소 문자열)도 그 서버로 보낸다")
+    void away_인_멤버도_보내고_예전_값도_그_서버로_보낸다() {
+        // arrange : 5 = away, 9 = 예전 값 "ws://...", 17 = 알아볼 수 없는 값 (오프라인)
+        givenLocations(List.of("5", "9", "17"),
+            Map.of("server", "ws://" + SERVER_1, "status", "away"), "ws://" + SERVER_2, Map.of("status", "online"));
+
+        // act
+        ChatReceivers receivers = chatMessageDeliveryService.locate(List.of(5L, 9L, 17L));
+
+        // assert
+        assertThat(receivers.byChatServer().get(SERVER_1)).containsExactly(5L);
+        assertThat(receivers.byChatServer().get(SERVER_2)).containsExactly(9L);
+        assertThat(receivers.offline()).containsExactly(17L);
     }
 
     @Test
@@ -197,7 +214,7 @@ class ChatMessageDeliveryServiceUnitTest {
         when(redisTemplate.getKeySerializer()).thenReturn((org.springframework.data.redis.serializer.RedisSerializer) StringRedisSerializer.UTF_8);
         ArgumentCaptor<RedisCallback<Object>> callback = ArgumentCaptor.forClass(RedisCallback.class);
         when(redisTemplate.executePipelined(callback.capture())).thenReturn(List.of(
-            Collections.nCopies(500, "ws://" + SERVER_1), Collections.nCopies(500, "ws://" + SERVER_2), Collections.nCopies(200, null)));
+            Collections.nCopies(500, at(SERVER_1)), Collections.nCopies(500, at(SERVER_2)), Collections.nCopies(200, null)));
 
         // act
         chatMessageDeliveryService.deliver("message-1", chatMessage, List.of(), chatMessageDeliveryService.locate(members));
@@ -221,7 +238,7 @@ class ChatMessageDeliveryServiceUnitTest {
     @DisplayName("success case : 서로 다른 서버에는 동시에 보내고 모두 끝난 뒤에 돌아온다")
     void 서로_다른_서버에는_동시에_보내고_모두_끝난_뒤에_돌아온다() throws Exception {
         // arrange : 서버 1 전송은 서버 2 전송이 시작될 때까지 기다린다 (차례로 보내면 여기서 막힌다)
-        givenLocations(List.of("5", "9"), "ws://" + SERVER_1, "ws://" + SERVER_2);
+        givenLocations(List.of("5", "9"), at(SERVER_1), at(SERVER_2));
         CountDownLatch server2Started = new CountDownLatch(1);
         AtomicBoolean server1Finished = new AtomicBoolean();
         doAnswer(invocation -> {
@@ -246,7 +263,7 @@ class ChatMessageDeliveryServiceUnitTest {
     @DisplayName("fail case : 한 서버 전달이 실패해도 다른 서버에는 보내고, 끝에서 실패한 서버를 담아 예외를 던진다 (재시도 토픽으로)")
     void 한_서버_전달이_실패해도_다른_서버에는_보내고_끝에서_예외를_던진다() {
         // arrange
-        givenLocations(List.of("5", "9"), "ws://" + SERVER_1, "ws://" + SERVER_2);
+        givenLocations(List.of("5", "9"), at(SERVER_1), at(SERVER_2));
         lenient().doThrow(new RuntimeException("timeout")).when(chatServerClient).deliver(eq(CHAT_SERVER_1), any());
 
         // act
@@ -275,7 +292,7 @@ class ChatMessageDeliveryServiceUnitTest {
     @DisplayName("success case : 확인된 첨부를 메시지와 함께 전달한다")
     void 확인된_첨부를_메시지와_함께_전달한다() {
         // arrange
-        givenLocations(List.of("5"), "ws://" + SERVER_1);
+        givenLocations(List.of("5"), at(SERVER_1));
 
         // act
         chatMessageDeliveryService.deliver("message-1", chatMessage,
@@ -292,7 +309,7 @@ class ChatMessageDeliveryServiceUnitTest {
     @DisplayName("success case : 이름 / 형식이 없는 첨부는 빈 문자열, 누른 사람 목록이 없는 리액션은 빈 목록으로 보낸다 (null 을 보내지 않는다)")
     void 이름_형식이_없는_첨부는_빈_문자열_누른_사람_목록이_없는_리액션은_빈_목록으로_보낸다() {
         // arrange
-        givenLocations(List.of("5"), "ws://" + SERVER_1);
+        givenLocations(List.of("5"), at(SERVER_1));
 
         // act
         ChatReceivers receivers = chatMessageDeliveryService.locate(List.of(5L));
@@ -313,7 +330,7 @@ class ChatMessageDeliveryServiceUnitTest {
     @DisplayName("success case : 리액션은 같은 방법으로 고른 수신자에게 reactions 전체를 보내고, 실패하면 예외를 던진다")
     void 리액션은_같은_방법으로_고른_수신자에게_reactions_전체를_보내고_실패하면_예외를_던진다() {
         // arrange
-        givenLocations(List.of("5", "17", "9"), "ws://" + SERVER_1, "ws://" + SERVER_1, "ws://" + SERVER_2);
+        givenLocations(List.of("5", "17", "9"), at(SERVER_1), at(SERVER_1), at(SERVER_2));
         // lenient : 다른 서버(1)로의 호출이 같은 스텁과 인자가 달라도 실패로 치지 않게
         lenient().doThrow(new RuntimeException("timeout")).when(chatServerClient).deliverReaction(eq(CHAT_SERVER_2), any());
 
@@ -335,6 +352,13 @@ class ChatMessageDeliveryServiceUnitTest {
         lenient().when(discoveryClient.getInstances("chatting")).thenReturn(List.of(instances));
     }
 
+    /**
+     * 읽는 쪽 RedisTemplate(JSON 직렬화)이 {userId} 의 새 값 {"server","status"} 를 읽으면 Map 이 온다
+     */
+    private static Map<String, String> at(String chatServer) {
+        return Map.of("server", "ws://" + chatServer, "status", "online");
+    }
+
     private void givenLocations(List<String> keys, Object... locations) {
         when(valueOperations.multiGet(keys)).thenReturn(new ArrayList<>(java.util.Arrays.asList(locations)));
     }
@@ -346,13 +370,13 @@ class ChatMessageDeliveryServiceUnitTest {
     private void givenLocationsOnServer1(List<Long> members) {
         if (members.size() <= ChatMessageDeliveryService.LOCATION_LOOKUP_CHUNK) {
             when(valueOperations.multiGet(members.stream().map(String::valueOf).toList()))
-                .thenReturn(new ArrayList<>(Collections.nCopies(members.size(), "ws://" + SERVER_1)));
+                .thenReturn(new ArrayList<>(Collections.nCopies(members.size(), at(SERVER_1))));
             return;
         }
         when(redisTemplate.getKeySerializer()).thenReturn((org.springframework.data.redis.serializer.RedisSerializer) StringRedisSerializer.UTF_8);
         List<Object> results = new ArrayList<>();
         for (List<Long> chunk : ChatMessageDeliveryService.chunks(members, ChatMessageDeliveryService.LOCATION_LOOKUP_CHUNK)) {
-            results.add(Collections.nCopies(chunk.size(), "ws://" + SERVER_1));
+            results.add(Collections.nCopies(chunk.size(), at(SERVER_1)));
         }
         when(redisTemplate.executePipelined(any(RedisCallback.class))).thenReturn(results);
     }

@@ -4,6 +4,7 @@ import com.distributed.chat.system.common.event.ChatMessageDelivery;
 import com.distributed.chat.system.common.event.ChatMessageEvent;
 import com.distributed.chat.system.common.event.ChatReactionDelivery;
 import com.distributed.chat.system.common.redis.ChatPresenceKeys;
+import com.distributed.chat.system.common.redis.ChatPresenceKeys.ChatPresence;
 import com.distributed.chat.system.common.redis.ChatServers;
 import com.distributed.chat.system.kafka.consumer.feign.ChatServerClient;
 import com.distributed.chat.system.mongodb.collection.ChatMessage.Attachment;
@@ -32,7 +33,7 @@ import org.springframework.stereotype.Service;
 /**
  * 채널 멤버(호출하는 쪽이 MySQL channel_user 에서 읽어 넘김)에게 메시지 / 리액션을 전달한다.
  * <ol>
- *   <li>접속 위치 : 멤버들의 Redis {@code {userId}} 를 MGET 1번 (멤버가 아주 많으면 500 개씩 나눠 파이프라인 1번)</li>
+ *   <li>접속 위치 : 멤버들의 Redis {@code {userId}} = {server, status} 를 MGET 1번 (server 만 본다, 예전 값 "ws://..." 도 읽는다) (멤버가 아주 많으면 500 개씩 나눠 파이프라인 1번)</li>
  *   <li>값이 없거나 가리키는 서버가 Eureka 에 없으면(죽은 서버) 오프라인 → 보내지 않고 {@link ChatReceivers#offline()} 로 돌려준다
  *       (메시지는 호출하는 쪽이 웹 푸시 알림 이벤트로 넘긴다, 리액션은 알림 없음)</li>
  *   <li>채팅 서버별로 묶어서 서버당 500 명씩 보낸다. 서로 다른 서버는 동시에 보내고 모두 끝날 때까지 기다린다
@@ -136,13 +137,13 @@ public class ChatMessageDeliveryService {
         Map<String, List<Long>> receiversByChatServer = new LinkedHashMap<>();
         List<Long> offline = new ArrayList<>();
         for (int i = 0; i < ids.size(); i++) {
-            Object location = i < locations.size() ? locations.get(i) : null;
-            if (!(location instanceof String chatServerUri)) {
-                // 오프라인 : 앱이 꺼져 있다
+            ChatPresence presence = ChatPresenceKeys.parse(i < locations.size() ? locations.get(i) : null);
+            if (presence == null) {
+                // 오프라인 : 앱이 꺼져 있다 (끊김 / 채팅 서버가 죽은 뒤 TTL 60초가 지남)
                 offline.add(ids.get(i));
                 continue;
             }
-            String chatServer = ChatPresenceKeys.chatServerOf(chatServerUri);
+            String chatServer = presence.chatServer();
             if (!aliveChatServers.contains(chatServer)) {
                 // 죽은 서버를 가리키는 값 = 오프라인 (서버가 죽어 키를 지우지 못했다)
                 log.debug("offline userId : {} (dead chat server {})", ids.get(i), chatServer);

@@ -64,12 +64,15 @@ class PresenceServiceUnitTest {
     }
 
     @Test
-    @DisplayName("success case : 팀 멤버 전체를 MGET 한 번으로 읽고 키가 없거나 모르는 값은 offline 으로 돌려준다")
-    void 팀_멤버_전체를_MGET_한_번으로_읽고_키가_없거나_모르는_값은_offline_으로_돌려준다() {
-        // arrange
+    @DisplayName("success case : 팀 멤버 전체를 MGET 한 번으로 읽어 status 를 주고, 키가 없거나 알아볼 수 없는 값은 offline 이다")
+    void 팀_멤버_전체를_MGET_한_번으로_읽어_status_를_주고_키가_없거나_알아볼_수_없는_값은_offline_이다() {
+        // arrange : JSON 직렬화 RedisTemplate 이 {server, status} 를 읽으면 Map 이 온다
         givenMembers(4L, 1L, 3L, 2L);
-        when(valueOperations.multiGet(List.of("presence:1", "presence:2", "presence:3", "presence:4")))
-            .thenReturn(Arrays.asList("online", "away", null, "busy"));
+        when(valueOperations.multiGet(List.of("1", "2", "3", "4"))).thenReturn(Arrays.asList(
+            Map.of("server", "ws://10.0.0.1:1111", "status", "online"),
+            Map.of("server", "ws://10.0.0.1:1111", "status", "away"),
+            null,
+            Map.of("status", "online")));
 
         // act
         ResponseData<Map<String, List<UserPresenceDto>>> response = presenceService.getTeamPresence(TEAM_ID);
@@ -88,13 +91,27 @@ class PresenceServiceUnitTest {
     void Redis_가_결과를_주지_않으면_모두_offline_이다() {
         // arrange
         givenMembers(1L, 2L);
-        when(valueOperations.multiGet(List.of("presence:1", "presence:2"))).thenReturn(null);
+        when(valueOperations.multiGet(List.of("1", "2"))).thenReturn(null);
 
         // act
         ResponseData<Map<String, List<UserPresenceDto>>> response = presenceService.getTeamPresence(TEAM_ID);
 
         // assert
         assertThat(response.getData().get("list")).extracting(UserPresenceDto::getStatus).containsExactly("offline", "offline");
+    }
+
+    @Test
+    @DisplayName("success case : 예전 값(서버 주소 문자열)은 online 이다")
+    void 예전_값은_online_이다() {
+        // arrange
+        givenMembers(1L, 2L);
+        when(valueOperations.multiGet(List.of("1", "2"))).thenReturn(Arrays.asList("ws://10.0.0.1:1111", null));
+
+        // act
+        ResponseData<Map<String, List<UserPresenceDto>>> response = presenceService.getTeamPresence(TEAM_ID);
+
+        // assert
+        assertThat(response.getData().get("list")).extracting(UserPresenceDto::getStatus).containsExactly("online", "offline");
     }
 
     @Test

@@ -41,6 +41,8 @@ generated
 
 ## etc ##
 .DS_Store
+.claude
+
 ## frontend ##
 # frontend(vite) 빌드 산출물 — ./gradlew build 시 생성
 /infra/distributed-chat-system-api-gateway/src/main/resources/static/

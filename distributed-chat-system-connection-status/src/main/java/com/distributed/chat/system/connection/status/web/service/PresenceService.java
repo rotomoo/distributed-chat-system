@@ -16,10 +16,11 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 /**
- * 팀 멤버 접속 상태 조회. 접속 상태를 읽는 곳은 이 서버 하나 (쓰는 쪽은 채팅 서버, Redis presence:{userId})
+ * 팀 멤버 접속 상태 조회. 접속 상태를 읽는 곳은 이 서버 하나 (쓰는 쪽은 채팅 서버, Redis {userId} = {server, status})
  * <ul>
  *   <li>팀 멤버 : MySQL team_user 1번 (로그인 사용자가 그 안에 없으면 2003)</li>
- *   <li>접속 상태 : 멤버 전체를 MGET 1번. 키가 없으면 offline (채팅 서버가 죽어도 TTL 60초 뒤 사라진다)</li>
+ *   <li>접속 상태 : 멤버 전체를 MGET 1번, status 만 본다. 키가 없으면 offline (채팅 서버가 죽어도 TTL 60초 뒤 사라진다).
+ *       예전 값(서버 주소만)은 online</li>
  * </ul>
  */
 @Service
@@ -42,7 +43,7 @@ public class PresenceService {
         }
 
         List<Object> presences = redisTemplate.opsForValue()
-            .multiGet(userIds.stream().map(ChatPresenceKeys::presenceKey).toList());
+            .multiGet(userIds.stream().map(ChatPresenceKeys::userKey).toList());
         List<UserPresenceDto> list = new ArrayList<>(userIds.size());
         for (int i = 0; i < userIds.size(); i++) {
             Object presence = presences == null ? null : presences.get(i);

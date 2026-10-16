@@ -29,6 +29,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextImpl;
 import org.springframework.session.Session;
@@ -61,6 +62,9 @@ class PresenceApiIntegrationTest {
 
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
 
     @Autowired
     @SuppressWarnings("rawtypes")
@@ -113,6 +117,20 @@ class PresenceApiIntegrationTest {
             .andExpect(jsonPath("$.data.list.length()").value(3))
             .andExpect(jsonPath("$.data.list[*].userId").value(Matchers.contains(alice.intValue(), bob.intValue(), carol.intValue())))
             .andExpect(jsonPath("$.data.list[*].status").value(Matchers.contains("online", "away", "offline")));
+    }
+
+    @Test
+    @DisplayName("success case : 예전 값(예전 채팅 서버가 쓴 서버 주소 문자열)은 online 으로 읽는다")
+    void 예전_값은_online_으로_읽는다() throws Exception {
+        // given : 예전 채팅 서버처럼 JSON 직렬화 RedisTemplate 으로 서버 주소만
+        String key = ChatPresenceKeys.userKey(bob);
+        redisKeys.add(key);
+        redisTemplate.opsForValue().set(key, "ws://10.0.0.1:1111", ChatPresenceKeys.TTL);
+
+        // when & then
+        mockMvc.perform(as(alice, get("/v1/private/api/presence").param("teamId", String.valueOf(teamId))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.list[?(@.userId == " + bob + ")].status").value(Matchers.contains("online")));
     }
 
     @Test
@@ -181,10 +199,13 @@ class PresenceApiIntegrationTest {
             .andExpect(status().isBadRequest());
     }
 
+    /**
+     * 채팅 서버가 쓰는 그대로 : {userId} = {server, status} JSON 텍스트, TTL 60초
+     */
     private void givenPresence(Long userId, String presence) {
-        String key = ChatPresenceKeys.presenceKey(userId);
+        String key = ChatPresenceKeys.userKey(userId);
         redisKeys.add(key);
-        redisTemplate.opsForValue().set(key, presence, ChatPresenceKeys.PRESENCE_TTL);
+        stringRedisTemplate.opsForValue().set(key, ChatPresenceKeys.userKeyValue("10.0.0.1:1111", presence), ChatPresenceKeys.TTL);
     }
 
     @SuppressWarnings("unchecked")

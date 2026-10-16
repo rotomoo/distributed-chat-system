@@ -3,6 +3,7 @@ package com.distributed.chat.system.kafka.consumer.consumer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+import com.distributed.chat.system.common.redis.ChatPresenceKeys;
 import com.distributed.chat.system.common.event.ChatMessageDelivery;
 import com.distributed.chat.system.common.event.ChatMessageEvent;
 import com.distributed.chat.system.common.event.ChatNotificationEvent;
@@ -44,6 +45,7 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -99,6 +101,9 @@ class EventConsumerEndToEndIntegrationTest {
     private RedisTemplate<String, Object> redisTemplate;
 
     @Autowired
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Autowired
     @Qualifier("notificationMongoTemplate")
     private MongoTemplate mongoTemplate;
 
@@ -144,11 +149,12 @@ class EventConsumerEndToEndIntegrationTest {
             channelUserRepository.save(ChannelUser.builder().channelId(channelId).userId(member).deleteYn(false).build());
         }
 
-        String chatServer = "ws://127.0.0.1:" + CHAT_SERVER.getAddress().getPort();
-        redisTemplate.opsForValue().set(String.valueOf(sender), chatServer);
-        redisTemplate.opsForValue().set(String.valueOf(online), chatServer);
-        redisTemplate.opsForValue().set(String.valueOf(onDeadServer), "ws://10.255.255.7:1");
-        redisTemplate.opsForValue().set(String.valueOf(outsider), chatServer);
+        // 채팅 서버가 쓰는 그대로 ({server, status} JSON 텍스트, TTL 60초). 보낸 사람은 예전 값(서버 주소 문자열)으로 둔다
+        String chatServer = "127.0.0.1:" + CHAT_SERVER.getAddress().getPort();
+        redisTemplate.opsForValue().set(String.valueOf(sender), ChatPresenceKeys.serverUri(chatServer));
+        stringRedisTemplate.opsForValue().set(String.valueOf(online), ChatPresenceKeys.userKeyValue(chatServer, "away"), ChatPresenceKeys.TTL);
+        stringRedisTemplate.opsForValue().set(String.valueOf(onDeadServer), ChatPresenceKeys.userKeyValue("10.255.255.7:1", "online"), ChatPresenceKeys.TTL);
+        stringRedisTemplate.opsForValue().set(String.valueOf(outsider), ChatPresenceKeys.userKeyValue(chatServer, "online"), ChatPresenceKeys.TTL);
     }
 
     @AfterEach
