@@ -4,6 +4,7 @@ import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.FORBIDDEN;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 import static org.springframework.http.HttpStatus.PAYLOAD_TOO_LARGE;
+import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
 import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 
 import lombok.AllArgsConstructor;
@@ -40,7 +41,8 @@ public enum ErrorCode {
     NOT_EXIST_FILE(4005, NOT_FOUND, "없는 파일입니다."),
 
     /* 알림 */
-    INVALID_PUSH_SUBSCRIPTION(5001, BAD_REQUEST, "잘못된 푸시 구독입니다.");
+    INVALID_PUSH_SUBSCRIPTION(5001, BAD_REQUEST, "잘못된 푸시 구독입니다."),
+    PUSH_NOT_READY(5002, SERVICE_UNAVAILABLE, "알림을 준비 중입니다.");
 
     private final int customCode;
     private final HttpStatus httpStatus;

@@ -18,7 +18,7 @@ import org.hibernate.annotations.DynamicInsert;
 import org.hibernate.annotations.DynamicUpdate;
 
 /**
- * 브라우저 웹 푸시 구독 (PushSubscription). 쓰는 쪽은 notification 서버 하나뿐이다.
+ * 브라우저 웹 푸시 구독 (PushSubscription). 구독 / 해제는 client-api, notification-consumer 는 읽고 만료된 구독(404 / 410)만 지운다.
  * <p>
  * endpoint 는 브라우저(기기)마다 하나라서 고유하다. 같은 브라우저에서 다른 계정으로 로그인해 다시 구독하면 주인이 바뀐다 (upsert)
  */

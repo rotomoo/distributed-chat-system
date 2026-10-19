@@ -1,7 +1,7 @@
 package com.distributed.chat.system.common.kafka;
 
 /**
- * 알림 이벤트 토픽 ({@link com.distributed.chat.system.common.event.ChatNotificationEvent} JSON). 쓰는 쪽은 kafka-consumer, 읽는 쪽은 notification 서버 하나뿐이다
+ * 알림 이벤트 토픽 ({@link com.distributed.chat.system.common.event.ChatNotificationEvent} JSON). 발행은 kafka-producer (message-consumer 가 HTTP 로 요청), 읽는 쪽은 notification-consumer 하나뿐이다
  * <ul>
  *   <li>key = channelId (같은 채널 알림은 한 파티션에서 차례로)</li>
  *   <li>한 건에 받는 사람은 {@link #MAX_RECEIVERS} 명까지. 넘으면 여러 건으로 나눈다</li>

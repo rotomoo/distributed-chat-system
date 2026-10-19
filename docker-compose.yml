@@ -144,18 +144,22 @@ services:
         MODULE: distributed-chat-system-client-api
     ports:
       - "7670:7670"
+    environment:
+      <<: *app-env
+      # 웹 푸시 구독 API 가 브라우저에 주는 공개키 (notification 과 같은 값. 없으면 MySQL vapid_key 를 읽는다)
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
     depends_on:
       <<: *app-depends
       mysql-container:
         condition: service_healthy
 
   # 오프라인 수신자에게 웹 푸시 (chat-notification 토픽 소비). VAPID 키는 VAPID_* 환경변수, 없으면 처음 뜰 때 만들어 MySQL 에 고정
-  notification:
+  notification-consumer:
     <<: *app
     build:
       context: .
       args:
-        MODULE: distributed-chat-system-notification
+        MODULE: distributed-chat-system-notification-consumer
     ports:
       - "7690:7690"
     environment:
@@ -197,12 +201,12 @@ services:
       kafka-1:
         condition: service_started
 
-  kafka-consumer:
+  message-consumer:
     <<: *app
     build:
       context: .
       args:
-        MODULE: distributed-chat-system-kafka-consumer
+        MODULE: distributed-chat-system-message-consumer
     depends_on:
       <<: *app-depends
       kafka-1:

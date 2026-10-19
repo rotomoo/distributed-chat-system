@@ -15,7 +15,7 @@ group "default" {
 
 target "app" {
   name       = svc
-  matrix     = { svc = ["service-discovery", "api-gateway", "client-api", "chatting", "kafka-producer", "kafka-consumer", "notification"] }
+  matrix     = { svc = ["service-discovery", "api-gateway", "client-api", "chatting", "kafka-producer", "message-consumer", "notification-consumer"] }
   context    = "."
   dockerfile = "Dockerfile"
   platforms  = ["linux/amd64"]

@@ -193,7 +193,7 @@ export function uploadFile(channelId, file, onProgress) {
   return { promise, abort: () => xhr.abort() }
 }
 
-// ── 웹 푸시 (notification 서버) ─────────────────────────
+// ── 웹 푸시 구독 (client-api. 보내기는 notification-consumer) ─────────────────────────
 
 // → base64url 공개키
 export async function getVapidPublicKey() {

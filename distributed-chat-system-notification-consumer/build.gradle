@@ -1,0 +1,30 @@
+dependencies {
+    implementation project(':common:distributed-chat-system-common')
+    implementation project(':infra:distributed-chat-system-mysql')
+    implementation project(':infra:distributed-chat-system-redis')
+
+    // kafka : chat-notification 소비
+    implementation 'org.springframework.kafka:spring-kafka'
+
+    // security : HTTP API 는 없다 (구독 API 는 client-api). actuator 만 열고 나머지는 막는다.
+    // redis 모듈의 세션 직렬화 설정(SessionConfig)이 security 클래스를 쓰므로 함께 둔다
+    implementation('org.springframework.boot:spring-boot-starter-security')
+
+    // mysql : 구독(읽기, 만료된 구독 삭제) / 음소거 / 채널 / 유저 / VAPID 키
+    compileOnly('org.springframework.boot:spring-boot-starter-data-jpa')
+    testImplementation('org.springframework.boot:spring-boot-starter-data-jpa')
+
+    // redis : 알림 묶기 (notify:throttle)
+    implementation('org.springframework.boot:spring-boot-starter-data-redis')
+
+    // 웹 푸시 (VAPID 서명 + aes128gcm 암호화). 타원곡선 연산은 BouncyCastle
+    implementation 'nl.martijndwars:web-push:5.1.1'
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
+
+    // 메트릭 (/actuator/prometheus)
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    // 재시도 토픽 / DLT 통합 테스트 (Kafka 는 진짜 브로커를 테스트 안에 띄운다)
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
+}

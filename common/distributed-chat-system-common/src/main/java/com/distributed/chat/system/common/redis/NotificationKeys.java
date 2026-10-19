@@ -1,7 +1,7 @@
 package com.distributed.chat.system.common.redis;
 
 /**
- * 알림 서버의 Redis 키 모양. 쓰는 쪽도 읽는 쪽도 notification 서버 하나뿐이다
+ * 알림 서버의 Redis 키 모양. 쓰는 쪽도 읽는 쪽도 notification-consumer 하나뿐이다
  * <ul>
  *   <li>{@code notify:throttle:{userId}:{channelId}} : 같은 (유저, 채널) 웹 푸시는 {@link #THROTTLE_SECONDS} 초에 한 번 (SET NX EX)</li>
  * </ul>

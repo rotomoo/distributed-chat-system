@@ -18,6 +18,14 @@ spring:
 chat:
   logging:
     skip-body-paths: /v1/private/api/file/**
+  notification:
+    # VAPID 공개키 : notification-consumer 와 같은 환경변수. 없으면 notification-consumer 가 MySQL vapid_key 에 저장한 키를 읽는다
+    vapid:
+      public-key: ${VAPID_PUBLIC_KEY:}
+    push:
+      # 구독 endpoint 로 허용하는 푸시 서비스 호스트 (점으로 시작하면 하위 도메인). notification-consumer 가 이 주소로 POST 하므로 아무 URL 이나 받지 않는다 (SSRF)
+      allowed-endpoint-hosts: fcm.googleapis.com,updates.push.services.mozilla.com,.push.apple.com,.notify.windows.com
+      allow-insecure-endpoint: false # true 면 http:// endpoint 허용 (테스트용)
 
 # 메트릭 : /actuator/health, /actuator/prometheus (api-gateway 는 /v1/**, /websocket/** 만 라우팅하므로 밖으로 노출되지 않는다)
 management:

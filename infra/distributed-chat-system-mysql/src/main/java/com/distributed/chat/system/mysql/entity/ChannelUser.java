@@ -45,7 +45,7 @@ public class ChannelUser extends BaseLoginInfoEntity {
     private String lastReadMessageId;
 
     /**
-     * 이 채널의 웹 푸시 알림을 끔. 쓰는 쪽은 client-api, 읽는 쪽은 notification 서버 (null = 저장 전이라 DB 기본값 false)
+     * 이 채널의 웹 푸시 알림을 끔. 쓰는 쪽은 client-api, 읽는 쪽은 notification-consumer (null = 저장 전이라 DB 기본값 false)
      */
     @Column(columnDefinition = "boolean not null default false comment '알림 음소거 여부'")
     private Boolean notificationMuted;

@@ -2,7 +2,7 @@ import { deleteSubscription, getVapidPublicKey, saveSubscription } from './api.j
 import { base64UrlToBytes } from './notify.js'
 
 // 웹 푸시 : 탭을 닫아도 알림이 오게 서비스 워커(/sw.js)로 구독한다.
-// 브라우저가 지원하지 않거나 서버(notification)가 아직 없으면 조용히 넘어간다 (탭 안 알림은 그대로 동작)
+// 브라우저가 지원하지 않거나 서버가 아직 공개키를 못 주면(notification-consumer 가 키를 만들기 전) 조용히 넘어간다 (탭 안 알림은 그대로 동작)
 
 function supported() {
   return typeof navigator !== 'undefined' && 'serviceWorker' in navigator && typeof window !== 'undefined' && 'PushManager' in window

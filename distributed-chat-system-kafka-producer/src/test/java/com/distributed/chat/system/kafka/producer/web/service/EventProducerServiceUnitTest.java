@@ -5,6 +5,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.distributed.chat.system.common.event.ChatMessageEvent;
+import com.distributed.chat.system.common.event.ChatNotificationEvent;
 import com.distributed.chat.system.common.event.ChatReactionEvent;
 import com.distributed.chat.system.common.event.EventJson;
 import com.distributed.chat.system.common.event.MalformedEventException;
@@ -55,6 +56,20 @@ class EventProducerServiceUnitTest {
     }
 
     @Test
+    @DisplayName("success case : 알림은 chat-notification 토픽에 채널 ID 를 키로 발행한다")
+    void 알림은_chat_notification_토픽에_채널_ID_를_키로_발행한다() {
+        // arrange
+        String payload = EventJson.write(new ChatNotificationEvent("6acc66675f99715e286f0f6e", 7L, 5L, "점심 뭐 먹을까요?", 0,
+            1_700_000_000_000L, List.of(9L, 17L)));
+
+        // act
+        eventProducerService.publishChatNotification(payload);
+
+        // assert
+        verify(kafkaTemplate).send("chat-notification", "7", payload);
+    }
+
+    @Test
     @DisplayName("success case : 이 서버가 모르는 새 필드도 빼지 않고 받은 문자열 그대로 발행한다 (컨슈머까지 간다)")
     void 모르는_새_필드도_빼지_않고_받은_문자열_그대로_발행한다() {
         // arrange
@@ -73,6 +88,7 @@ class EventProducerServiceUnitTest {
         // act & assert
         assertThatThrownBy(() -> eventProducerService.publishChatSendMessage("{\"channelId\":")).isInstanceOf(MalformedEventException.class);
         assertThatThrownBy(() -> eventProducerService.publishChatReaction("[]")).isInstanceOf(MalformedEventException.class);
+        assertThatThrownBy(() -> eventProducerService.publishChatNotification("not json")).isInstanceOf(MalformedEventException.class);
         verifyNoInteractions(kafkaTemplate);
     }
 }

@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 
 /**
  * 환경변수로 받지 않았을 때 알림 서버가 처음 뜰 때 만든 VAPID 키 (행은 id = {@link #SINGLE_ID} 하나뿐).
- * 키가 바뀌면 기존 구독이 전부 무효가 되므로 한 번 만들면 바꾸지 않는다. 쓰는 쪽은 notification 서버 하나뿐이다
+ * 키가 바뀌면 기존 구독이 전부 무효가 되므로 한 번 만들면 바꾸지 않는다. 쓰는 쪽은 notification-consumer 하나뿐이다
  */
 @Entity
 @Table(name = "vapid_key")

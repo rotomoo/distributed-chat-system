@@ -41,6 +41,14 @@ public class EventProducerController {
     }
 
     /**
+     * 오프라인 멤버 웹 푸시 알림 발행 (본문 = {@link com.distributed.chat.system.common.event.ChatNotificationEvent} JSON, 보내는 쪽은 message-consumer)
+     */
+    @PostMapping(value = "/publish/chat-notification", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public void publishChatNotification(@RequestBody String payload) {
+        eventProducerService.publishChatNotification(payload);
+    }
+
+    /**
      * 이벤트로 읽을 수 없는 본문은 발행하지 않고 400
      */
     @ExceptionHandler(MalformedEventException.class)

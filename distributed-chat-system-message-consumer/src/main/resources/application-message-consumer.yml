@@ -1,0 +1,82 @@
+spring:
+  config:
+    activate:
+      on-profile: default
+
+  kafka:
+    bootstrap-servers:
+      - localhost:9194
+    consumer:
+      group-id: chat-group-1
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer # 값 = 이벤트 JSON (common EventJson)
+    # 재시도 / DLT 토픽으로 원래 레코드(JSON 문자열)를 그대로 다시 보낸다 (Spring Kafka 재시도 토픽. 알림 발행은 kafka-producer)
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+  application:
+    name: message-consumer
+
+# 채팅 서버 목록만 받는다. 컨슈머는 다른 서비스가 찾아올 일이 없으므로 등록하지 않는다
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: true
+    registry-fetch-interval-seconds: 5 # 채팅 서버 증감을 빨리 반영 (default 30s)
+    service-url:
+      defaultZone: http://localhost:7710/eureka/
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  kafka:
+    bootstrap-servers:
+      - kafka-1:9192
+    consumer:
+      group-id: chat-group-1
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer # 값 = 이벤트 JSON (common EventJson)
+    # 재시도 / DLT 토픽으로 원래 레코드(JSON 문자열)를 그대로 다시 보낸다 (Spring Kafka 재시도 토픽. 알림 발행은 kafka-producer)
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+  application:
+    name: message-consumer
+
+# 채팅 서버 목록만 받는다. 컨슈머는 다른 서비스가 찾아올 일이 없으므로 등록하지 않는다
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: true
+    registry-fetch-interval-seconds: 5 # 채팅 서버 증감을 빨리 반영 (default 30s)
+    service-url:
+      defaultZone: http://service-discovery:7710/eureka/
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: stage
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: prod

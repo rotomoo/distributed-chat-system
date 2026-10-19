@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.distributed.chat.system.common.event.ChatMessageEvent;
+import com.distributed.chat.system.common.event.ChatNotificationEvent;
 import com.distributed.chat.system.common.event.ChatReactionEvent;
 import com.distributed.chat.system.common.event.EventJson;
 import com.distributed.chat.system.common.event.MalformedEventException;
@@ -71,6 +72,22 @@ class EventProducerControllerUnitTest {
 
         // assert
         verify(eventProducerService).publishChatSendMessage(body);
+    }
+
+    @Test
+    @DisplayName("success case : JSON 알림 본문을 받은 그대로 발행한다")
+    void JSON_알림_본문을_받은_그대로_발행한다() throws Exception {
+        // arrange
+        String body = EventJson.write(new ChatNotificationEvent("6acc66675f99715e286f0f6e", 7L, 5L, "점심 뭐 먹을까요?", 0,
+            1_700_000_000_000L, List.of(9L)));
+
+        // act
+        mockMvc.perform(post("/v1/private/event/publish/chat-notification")
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk());
+
+        // assert
+        verify(eventProducerService).publishChatNotification(body);
     }
 
     @Test

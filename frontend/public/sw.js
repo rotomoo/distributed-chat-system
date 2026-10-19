@@ -1,4 +1,4 @@
-// 웹 푸시 서비스 워커. 탭이 닫혀 있어도 notification 서버가 보낸 푸시로 알림을 띄우고,
+// 웹 푸시 서비스 워커. 탭이 닫혀 있어도 notification-consumer 가 보낸 푸시로 알림을 띄우고,
 // 알림을 누르면 열린 탭이 있으면 그 탭에서 (postMessage), 없으면 새 창으로 그 채널을 연다
 
 // 푸시 본문 {title, body, url, tag} → showNotification 인자. 글자 본문이 와도 깨지지 않게

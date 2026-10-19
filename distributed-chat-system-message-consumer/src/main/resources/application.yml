@@ -1,0 +1,40 @@
+server:
+  port: 7620
+
+spring:
+  profiles:
+    active: default
+    include:
+      - common
+      - mongodb
+      - mysql
+      - message-consumer
+
+  output:
+    ansi:
+      enabled: always
+
+
+# 재시도 토픽 대기 (ms). 시도 수 = 대기 수 + 1, 그 뒤 DLT (KafkaRetryTopicConfig)
+# delivery.parallelism : 여러 채팅 서버로 동시에 보내는 스레드 수 (ChatMessageDeliveryService)
+# notification : kafka-producer 로 알림 발행을 요청하는 스레드 수 / 대기열 크기 (가득 차면 버림, NotificationExecutorConfig)
+chat:
+  kafka:
+    retry:
+      delays-ms: 1000,5000,30000
+      topic-partitions: 3
+  delivery:
+    parallelism: 8
+  notification:
+    parallelism: 2
+    queue-capacity: 10000
+
+# 메트릭 : /actuator/health, /actuator/prometheus (api-gateway 는 /v1/**, /websocket/** 만 라우팅하므로 밖으로 노출되지 않는다)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}

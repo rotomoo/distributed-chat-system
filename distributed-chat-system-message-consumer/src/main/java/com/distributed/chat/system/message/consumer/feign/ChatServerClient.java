@@ -1,0 +1,26 @@
+package com.distributed.chat.system.message.consumer.feign;
+
+import com.distributed.chat.system.common.event.ChatMessageDelivery;
+import com.distributed.chat.system.common.event.ChatReactionDelivery;
+import java.net.URI;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.PostMapping;
+
+/**
+ * 수신자의 소켓은 그 유저가 붙은 채팅 서버 메모리에만 있으므로 "아무 채팅 서버" 가 아니라 정해진 한 대로 보내야 한다.
+ * 그래서 로드밸런싱(name)을 쓰지 않고 호출할 때 첫 인자 {@link URI} 로 대상 서버를 정한다 (url 은 URI 로 덮어써지는 자리값).
+ * 본문은 Spring 기본 JSON 인코더로 보낸다 (application/json, 이벤트 형식은 common EventJson 의 호환 규칙)
+ */
+@FeignClient(name = "chat-server", url = "http://chat-server", configuration = ChatServerClientConfig.class)
+public interface ChatServerClient {
+
+    @PostMapping(value = "/internal/chat/deliver", consumes = MediaType.APPLICATION_JSON_VALUE)
+    void deliver(URI chatServerUri, ChatMessageDelivery delivery);
+
+    /**
+     * 이모지 리액션이 바뀐 메시지의 reactions 전체 (같은 타임아웃 / 재시도 설정)
+     */
+    @PostMapping(value = "/internal/chat/deliver-reaction", consumes = MediaType.APPLICATION_JSON_VALUE)
+    void deliverReaction(URI chatServerUri, ChatReactionDelivery delivery);
+}

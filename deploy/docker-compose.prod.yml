@@ -22,10 +22,10 @@ services:
     image: ${ECR_REGISTRY}/distributed-chat-system/chatting:${IMAGE_TAG:-latest}
   kafka-producer:
     image: ${ECR_REGISTRY}/distributed-chat-system/kafka-producer:${IMAGE_TAG:-latest}
-  kafka-consumer:
-    image: ${ECR_REGISTRY}/distributed-chat-system/kafka-consumer:${IMAGE_TAG:-latest}
-  notification:
-    image: ${ECR_REGISTRY}/distributed-chat-system/notification:${IMAGE_TAG:-latest}
+  message-consumer:
+    image: ${ECR_REGISTRY}/distributed-chat-system/message-consumer:${IMAGE_TAG:-latest}
+  notification-consumer:
+    image: ${ECR_REGISTRY}/distributed-chat-system/notification-consumer:${IMAGE_TAG:-latest}
     ports: !reset []
 
   # ── 인프라 : 호스트 포트 닫기 ───────────────────────────────────

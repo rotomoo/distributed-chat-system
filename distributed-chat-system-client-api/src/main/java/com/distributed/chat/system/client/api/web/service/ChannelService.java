@@ -154,7 +154,7 @@ public class ChannelService {
     }
 
     /**
-     * 이 채널(DM 포함)의 웹 푸시 알림 끄기 / 켜기. 채널 멤버만 (아니면 3003). notification 서버가 알림 보낼 때 읽는다
+     * 이 채널(DM 포함)의 웹 푸시 알림 끄기 / 켜기. 채널 멤버만 (아니면 3003). notification-consumer 가 알림 보낼 때 읽는다
      */
     @Transactional
     public ResponseData setNotificationMuted(Long channelId, boolean muted) {
