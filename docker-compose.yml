@@ -171,26 +171,20 @@ services:
         condition: service_started
 
   # 채팅 서버는 3대로 띄워 서버간 전달(컨슈머 경유)을 확인한다. 포트는 랜덤(server.port: 0)
-  chatting-1:
+  chatting-1: &chatting
     <<: *app
     build:
       context: .
       args:
         MODULE: distributed-chat-system-chatting
+    environment:
+      <<: *app-env
+      # 웹소켓 연결을 메모리에 들고 있으므로 다른 서비스(256m)보다 크게 준다. 연결 데이터 400MB + Spring 기본 사용량
+      JAVA_OPTS: -Xmx640m
 
-  chatting-2:
-    <<: *app
-    build:
-      context: .
-      args:
-        MODULE: distributed-chat-system-chatting
+  chatting-2: *chatting
 
-  chatting-3:
-    <<: *app
-    build:
-      context: .
-      args:
-        MODULE: distributed-chat-system-chatting
+  chatting-3: *chatting
 
   kafka-producer:
     <<: *app
