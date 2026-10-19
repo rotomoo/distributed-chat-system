@@ -34,9 +34,9 @@ distributed-chat-system
         - 📁 distributed-chat-system-service-discovery
     - 📁 distributed-chat-system-chatting
     - 📁 distributed-chat-system-client-api
-    - 📁 distributed-chat-system-kafka-consumer
+    - 📁 distributed-chat-system-message-consumer
     - 📁 distributed-chat-system-kafka-producer
-    - 📁 distributed-chat-system-notification
+    - 📁 distributed-chat-system-notification-consumer
 
 <br>
 
@@ -46,22 +46,12 @@ distributed-chat-system
 
 <br>
 
-## 채팅 메시지 흐름
-
-> **모든 실시간 기능은 WebSocket을 통해 동작** ([ref : WebSocket 프로토콜](https://rotomoo.tistory.com/100))
->
-> **실시간 접속 데이터 및 메시지 전송을 채팅 서버 메모리로 관리**
-> 
-> - DB 저장 : 초당 약 230건 (N명에게 보내도 1번)
-> - 메시지 전송 : 초당 230 × N건, 채팅 서버 메모리로 처리
-
-![채팅 메시지 흐름](./image/chat-message-flow.png)
-
 # 설계과정
 
 ## 기능 요구사항
 
-- DAU(Daily Active User) 1,000,000명 지원 시스템
+> DAU(Daily Active User) 1,000,000명 지원 시스템
+
 - 팀 기능
 - 실시간 DM(Direct Message), 채널 채팅 기능
 - 실시간 팀 사용자 접속상태 표시 기능
@@ -76,103 +66,164 @@ distributed-chat-system
 
 ## 개략적 규모 추정
 
+**데이터 저장 전략**
+
+- Mysql
+
+  회원, 팀, 채널 데이터 저장
+
+
+- MongoDB
+
+  메시지, 이모티콘 반응, 댓글, 메타데이터 저장  
+  첨부파일은 GridFS 에 바이너리로 저장  
+  <br>
+  예시
+
+    ```json
+    {
+      "messageId": "1353215",
+      "channelId": "12345",
+      "createUserId": "1142",
+      "content": "안녕하세요!",
+      "create_dt": "2024-11-18T10:30:00Z",
+      "reactions": [
+        {
+          "emoji": "👍",
+          "count": 3
+        },
+        {
+          "emoji": "😂",
+          "count": 1
+        }
+      ],
+      "comments": [
+        {
+          "createUserId": "114346",
+          "content": "반가워요!",
+          "create_dt": "2024-11-18T10:35:00Z"
+        }
+      ],
+      "attachments": [
+        {
+          "fileId": "6710a3b1e4b0a1b2c3d4e5f0",
+          "name": "photo.jpg",
+          "contentType": "image/jpeg",
+          "size": 204800
+        }
+      ]
+    }
+    ```
+  <br>
+- Redis
+
+  Shared Session Store - Redis 기반 세션 중앙화  <br>
+  [Redis Sentinel (Failover : SPOF 방지, 가용성 확보)](https://rotomoo.tistory.com/101)
+
+<br>
+
 **저장소 요구량**
 
 - DAU (Daily Active Users): 1,000,000명
 - 1인당 일일 평균 메시지 전송 수: 20건 → 하루 20,000,000건 (평균 초당 약 230건)
-- 최대 텍스트 메시지 길이: 4,000자 (한글 UTF-8 약 12KB)
-- 평균 메시지 문서 크기: 1KB (본문 + ID / 시각 / 리액션 등)
-- 이미지 첨부파일 비율: 20%
-- 평균 이미지 크기: 200KB
-
+- 최대 텍스트 메시지 크기: 12KB (한글, 4,000자 제한)
+- 첨부파일 비율: 20%
+- 평균 첨부파일 크기: 200KB
 - 연간 메시지 수 = 1,000,000 * 20건 * 365일 = 73억 건 / year
-- 연간 메시지 크기 = 1,000,000 * 20건 * 1KB * 365일 = 7.3TB / year
-- 연간 이미지 수 = 1,000,000 * 20건 * 20% * 365일 = 14.6억 개 / year
-- 연간 이미지 크기 = 1,000,000 * 20건 * 20% * 200KB * 365일 = 292TB / year
+- 연간 메시지 크기 = 1,000,000 * 20건 * 12KB * 365일 = 87.6TB / year
+- 연간 첨부파일 수 = 1,000,000 * 20건 * 20% * 365일 = 14.6억 개 / year
+- 연간 첨부파일 크기 = 1,000,000 * 20건 * 20% * 200KB * 365일 = 292TB / year
+- 10년간 MongoDB 저장소 요구량 = 약 3.8PB
+  - 메시지 : 730억 건, 876TB
+  - 첨부파일 : 146억 개, 2.92PB
 
-- 10년간 MongoDB 저장소 요구량
-    - 메시지 : 730억 건 (MySQL 이면 730억 행, MongoDB 는 문서 730억 개), 73TB
-    - 첨부파일(GridFS) : 146억 개 (파일 정보 1개 + 255KB chunk 1개 = 문서 292억 개), 2.92PB
-    - 합계 : 문서 약 1,022억 개, 약 3PB
-    - 서버 한 대(MySQL 테이블 하나)에 둘 수 없는 양 → 분산(샤딩) 필요. MySQL 은 샤딩을 애플리케이션이 직접 해야 하지만, MongoDB 는 샤딩을 기본 기능으로 제공 (샤딩 키 : channelId)
+**결론**
+
+- 한 노드에 담을 수 없는 양이므로 분산(샤딩) 필요
+- 추후 첨부파일은 온프레미스 방식으로 전환 필요
 
 <br>
 
 **채팅서버 메모리 요구량**
 
+> 모든 실시간 기능은 WebSocket을 통해 동작 ([ref : WebSocket 프로토콜](https://rotomoo.tistory.com/100))
+
+- 채팅 서버 메모리를 통해 채팅 메시지 전송
+  - DB 쓰기 트랜잭션 : 초당 약 230건 (N명에게 보내도 1번)
+  - 메시지 전송 : 초당 230 × N건, 채팅 서버 메모리로 처리
 - 동시 접속자: 100,000명 (DAU 의 10%)
 - 접속당 서버 메모리 : 10KB
-- 채팅서버 메모리 요구량 : 1GB
-    - 채팅 서버 3대 기준 서버당 약 34,000 연결, 약 340MB
-    - 트래픽 분산 필요 : 채팅 서버 분산
-        - SPOF 방지 : 가용성 확보
+- 채팅서버 메모리 요구량 = 100,000명 * 10KB = 1GB
 
-<br>
+**결론**
+
+- 메모리 요구량 및 트래픽 분산이 필요하여 채팅 서버 분산 (채팅 서버 1대당 34,000 연결, 약 340MB)
+- 채팅 서버 한 대가 내려가도 채팅이 끊기지 않도록 가용성 확보
 
 ## 기능 목록
 
 **(infra) api-gateway server** — 리버스 프록시 (`:8080`)
 
-- 화면(frontend 빌드 결과) 제공
-- 경로별로 서버에 요청 전달 (spring-cloud-gateway)
-    - `/v1/private/api/notification/**` → notification, `/v1/**` → client-api, `/websocket/**` → chatting
-    - 같은 서버가 여러 대면 Eureka 에서 받은 살아 있는 서버 중 한 대를 고른다 [(spring-cloud-loadbalancer, round-robin)](https://docs.spring.io/spring-cloud-commons/reference/spring-cloud-commons/loadbalancer.html)
-- 채팅 웹소켓은 그 유저가 이미 접속한 채팅 서버로 보낸다 (Redis `{userId}` 의 server). 값이 없거나 죽은 서버면 round-robin
+- 가용 서버 라우팅 (spring-cloud-gateway)
+    - 기존 접속 채팅 서버 우선 라우팅
+    - 채팅 서버
+      로드밸런서 [(spring-cloud-loadbalancer, round-robin)](https://docs.spring.io/spring-cloud-commons/reference/spring-cloud-commons/loadbalancer.html)
 
 <br>
 
-**(infra) service-discovery server** — 서비스 레지스트리 (spring-cloud-eureka)
+**(infra) service-discovery server** — 서비스 레지스트리
 
-- 각 서버가 뜰 때 자기 주소를 등록하고, 주기적으로 살아 있다고 알린다
-- api-gateway 와 kafka-consumer 가 여기서 살아 있는 서버 목록을 받아 간다
+- client-side discovery (spring-cloud-eureka)
+    - 가용 서버 정보 동기화
 
 <br>
 
 **chatting server**
 
 - 웹소켓 연결 (로그인 세션 확인), 한 유저의 여러 기기 연결을 메모리에 보관
-- 클라이언트가 보낸 메시지 / 리액션을 kafka-producer 로 넘긴다
-- kafka-consumer 가 보낸 메시지 / 리액션을 접속한 기기마다 보낸다
-- 하트비트 : 25초마다 ping, 응답 없는 연결은 끊는다
-- 접속 위치와 접속 상태(online / away)를 Redis `{userId}` 에 쓴다
+- 클라이언트가 보낸 메시지를 kafka-producer 로 전송
+- message-consumer 가 보낸 메시지를 접속한 기기로 전송
+- 하트비트 : 25초마다 브라우저에 ping, 응답 없는 연결은 끊음
+- 접속 위치와 접속 상태(온라인 / 자리 비움)를 Redis `{userId}` 에 동기화
 
 <br>
 
 **client-api server**
 
-- 회원가입, 로그인 / 로그아웃 (Redis 세션), 내 정보
-- 워크스페이스 생성 / 가입 / 목록 / 멤버 조회
-- 공개 채널 생성 / 참여 / 목록, DM 열기 / 목록
-- 이전 메시지 조회, 재접속 시 놓친 메시지 조회
+- 회원가입, 로그인 / 로그아웃 (Redis 세션), 내 정보 조회
+- 팀 생성 / 가입 / 목록 조회 / 멤버 조회
+- 채널 생성 / 참여 / 목록 조회
+- DM(1:1 대화) 시작 / 목록 조회
+- 이전 메시지 조회, 재접속 시 놓친 메시지(멱등) 조회
 - 읽음 위치 저장, 채널별 안 읽은 메시지 수
-- 채널 알림 끄기 / 켜기
+- 채널 알림 끄기 / 켜기, 웹 푸시 구독 / 해제
 - 첨부파일 업로드 / 다운로드
-- 팀 사용자 접속상태 목록 조회 (Redis `{userId}` 의 status → online / away / offline)
+- 팀 사용자 접속상태 목록 조회 (Redis `{userId}` 의 status → 온라인 / 자리 비움 / 오프라인)
 
 <br>
 
-**kafka-consumer server**
+**message-consumer server**
 
-- 채팅 메시지 / 리액션 이벤트 소비
+- 채팅 메시지 이벤트 소비
 - 보낸 사람이 채널 멤버인지 확인 (MySQL)
-- MongoDB 에 저장 (eventId 로 한 번만 저장), 리액션 반영
-- 채널 멤버가 접속한 채팅 서버를 Redis 에서 찾아 서버별로 전달 (HTTP, 500명씩)
-- 오프라인 멤버는 알림 이벤트로 발행 (chat-notification 토픽)
-- 실패하면 재시도 토픽으로 다시 처리, 끝까지 실패하면 DLT
+- 메시지 MongoDB 에 저장 (eventId 로 멱등 저장)
+- 채널 멤버가 접속한 채팅 서버를 Redis 에서 찾아(MGET) 서버별로 전달 (HTTP, 500명씩)
+- 오프라인 멤버는 kafka-producer 에 알림 발행 요청 (HTTP)
+- 실패하면 재시도 토픽으로 다시 처리 (1초 → 5초 → 30초), 끝까지 실패하면 DLT 에 남기고 로그
 
 <br>
 
 **kafka-producer server**
 
 - 채팅 메시지 / 리액션 이벤트 발행 (채널 ID 를 키로 → 같은 채널은 같은 파티션, 채널 안 순서 보장)
+- 오프라인 멤버 알림 이벤트 발행 (chat-notification 토픽, message-consumer 가 요청)
 
 <br>
 
-**notification server**
+**notification-consumer server**
 
 - 오프라인 멤버에게 웹 푸시 (chat-notification 토픽 소비)
     - 알림 끈 채널은 보내지 않는다, 같은 유저 / 채널은 30초에 한 번
-- 웹 푸시 구독 / 해제 API
 
 <br>
 
@@ -193,24 +244,6 @@ distributed-chat-system
 **MongoDB** — 메시지, 이모지 리액션, 첨부파일
 
 - 첨부파일 본문은 GridFS 에 바이너리(chunk)로 저장하고, 메시지에는 fileId 와 이름 / 타입 / 크기만 둔다
-- 메시지 예시 (`chatMessage` 컬렉션)
-
-    ```json
-    {
-      "_id": "6710a3c2e4b0a1b2c3d4e5f6",
-      "eventId": "0b7c6f2e-3c1a-4f5e-9d2b-7a8e1c4b5d60",
-      "channelId": 12345,
-      "createUserId": 1142,
-      "content": "안녕하세요!",
-      "createDt": "2026-10-16T10:30:00Z",
-      "reactions": [
-        { "emoji": "👍", "userIds": [1142, 2001, 2002] }
-      ],
-      "attachments": [
-        { "fileId": "6710a3b1e4b0a1b2c3d4e5f0", "name": "photo.jpg", "contentType": "image/jpeg", "size": 204800 }
-      ]
-    }
-    ```
 - 컬렉션 설계
 - 분산 처리
     - 샤딩 키 : ChannelId
@@ -221,9 +254,9 @@ distributed-chat-system
 
 | 키 | 값 | TTL | 쓰는 쪽 | 읽는 쪽 |
 |---|---|---|---|---|
-| `{userId}` | `{"server":"ws://ip:port","status":"online"\|"away"}` | 60초 (유저당 20초마다 갱신) | chatting | api-gateway (라우팅), kafka-consumer (전달할 서버), client-api (접속 상태) |
+| `{userId}` | `{"server":"ws://ip:port","status":"online"\|"away"}` | 60초 (유저당 20초마다 갱신) | chatting | api-gateway (라우팅), message-consumer (전달할 서버), client-api (접속 상태) |
 | `distributed-chat-system:sessions:{sessionId}` | 로그인 세션 (Hash, Spring Session) | 30일 | client-api | chatting (웹소켓 연결 시 로그인 확인) |
-| `notify:throttle:{userId}:{channelId}` | `1` | 30초 | notification | notification (같은 채널 웹 푸시 30초에 한 번) |
+| `notify:throttle:{userId}:{channelId}` | `1` | 30초 | notification-consumer | notification-consumer (같은 채널 웹 푸시 30초에 한 번) |
 
 - TTL을 통해 접속상태 관리 (채팅 서버가 내려가도 60초 후 만료)
 
@@ -233,7 +266,7 @@ distributed-chat-system
 
 | 이름 | 값 | 쓰임 |
 |---|---|---|
-| `webSocketSessionMap` | userId → 그 유저의 기기 연결들 (sessionId → WebSocketSession), away 를 보낸 기기, Redis 에 마지막으로 쓴 상태 / 시각 | 받은 메시지를 기기마다 보낸다, 기기들을 합쳐 online / away 를 정한다 |
+| `webSocketSessionMap` | userId → 그 유저의 기기 연결들 (sessionId → WebSocketSession), 자리 비움을 보낸 기기, Redis 에 마지막으로 쓴 상태 / 시각 | 받은 메시지를 기기마다 보낸다, 기기들을 합쳐 온라인 / 자리 비움을 정한다 |
 | `lastSeenAtBySession` | sessionId → 마지막으로 프레임을 받은 시각 | 하트비트 : 응답 없는 연결을 찾아 끊는다 |
 
 <br>
